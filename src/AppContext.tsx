@@ -42,7 +42,7 @@ interface AppState {
   setPeriod: (period: PeriodFilter) => void
   updateSettings: (next: AppSettings) => void
   addDocument: (file: File, dataUrl: string) => DocumentRecord
-  extractDocument: (documentId: string) => Promise<JournalEntry>
+  extractDocument: (documentId: string) => Promise<ExtractOutcome>
   deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
   approveEntry: (entryId: string) => string[]
@@ -80,6 +80,11 @@ function entryFromExtract(docId: string, result: ExtractResult): JournalEntry {
     extractSource: result.source,
     extractedFields: result.fields,
   }
+}
+
+export type ExtractOutcome = {
+  entry: JournalEntry
+  warning?: string
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -188,6 +193,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const fields = enabledExtractFields(settingsRef.current)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     const googleKey = loadGoogleApiKey()
+    // Send via header and body so a proxy that strips custom headers still works
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
 
     const res = await fetch('/api/extract', {
@@ -198,6 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         filename: doc.name,
         size: doc.dataUrl.length,
         fields,
+        ...(googleKey ? { googleApiKey: googleKey } : {}),
       }),
     })
     if (!res.ok) {
@@ -208,6 +215,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw new Error((err as { error?: string }).error || 'Extract failed')
     }
     const result = (await res.json()) as ExtractResult
+    if (googleKey && result.source === 'mock') {
+      throw new Error(
+        'Google key was sent but the server returned a mock extract. Check that /api/extract received the key.',
+      )
+    }
     const entry = entryFromExtract(doc.id, result)
     const sourceLabel =
       result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
@@ -216,6 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       `$${Number(result.amount).toFixed(2)}`,
       result.vendor,
       result.memo,
+      result.warning,
     ].filter(Boolean)
 
     setEntries((prev) => [entry, ...prev])
@@ -233,7 +246,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           : d,
       ),
     )
-    return entry
+    return { entry, warning: result.warning }
   }, [])
 
   const updateEntry = useCallback((entry: JournalEntry) => {

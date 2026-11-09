@@ -19,6 +19,7 @@ export function Documents() {
   const [dragging, setDragging] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
 
   const activeFields = enabledExtractFields(settings)
@@ -68,13 +69,14 @@ export function Documents() {
   async function onExtract(id: string) {
     setBusyId(id)
     setError(null)
+    setNotice(null)
     setLastResult(null)
     try {
-      const entry = await extractDocument(id)
+      const { entry, warning } = await extractDocument(id)
       const mode = providerLabel(entry.extractSource)
-      setLastResult(
-        `${mode} extract → draft ${entry.vendor || 'entry'} · $${entry.lines[0]?.debit || entry.lines[1]?.credit || 0} · fields: ${(entry.extractedFields || activeFields).join(', ')}`,
-      )
+      const base = `${mode} extract → draft ${entry.vendor || 'entry'} · $${entry.lines[0]?.debit || entry.lines[1]?.credit || 0} · fields: ${(entry.extractedFields || activeFields).join(', ')}`
+      setLastResult(base)
+      if (warning) setNotice(warning)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extract failed')
     } finally {
@@ -108,6 +110,9 @@ export function Documents() {
         <span className="muted">
           Requesting fields: {activeFields.join(', ')}. Provider & fields in{' '}
           <Link to="/settings">Settings</Link>.
+          {preferredProvider === 'google'
+            ? ' Google needs JPEG/PNG photos — seed SVG demos will error instead of silently mocking.'
+            : ''}
         </span>
       </div>
 
@@ -141,6 +146,12 @@ export function Documents() {
       </div>
 
       {error && <p className="error" style={{ marginTop: '0.75rem' }}>{error}</p>}
+      {notice && (
+        <p className="status-banner" style={{ marginTop: '0.75rem' }}>
+          <span className="badge warn">Provider notice</span>
+          <span className="muted">{notice}</span>
+        </p>
+      )}
       {lastResult && (
         <p className="muted" style={{ marginTop: '0.75rem' }}>
           <span className="badge ok">Latest extract</span> {lastResult}{' '}

@@ -56,6 +56,7 @@ export interface ExtractResult {
   editRequired: boolean
   source: 'google' | 'openai' | 'mock'
   fields: string[]
+  warning?: string
 }
 
 export interface PeriodFilter {

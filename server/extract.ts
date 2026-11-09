@@ -22,7 +22,19 @@ export interface ExtractPayload {
   editRequired: boolean
   source: ExtractSource
   fields: ExtractFieldKey[]
+  /** Present when a preferred provider failed and a lower-priority provider was used. */
+  warning?: string
 }
+
+const GOOGLE_SUPPORTED_MIME = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'image/gif',
+])
 
 const ALL_FIELDS: ExtractFieldKey[] = [
   'date',
@@ -111,11 +123,21 @@ export function mockExtract(filename: string, size: number, fields: ExtractField
 }
 
 function stripDataUrl(dataUrl: string): { mime: string; base64: string } {
-  const match = /^data:([^;]+);base64,(.+)$/s.exec(dataUrl)
-  if (!match) {
-    throw new Error('Expected a base64 data URL')
+  const base64Match = /^data:([^;,]+(?:;[^;,]+)*)?;base64,(.+)$/s.exec(dataUrl)
+  if (base64Match) {
+    const mime = base64Match[1].split(';')[0].trim()
+    return { mime, base64: base64Match[2] }
   }
-  return { mime: match[1], base64: match[2] }
+
+  // Seed demos and some browsers use URL-encoded (non-base64) data URLs
+  const plainMatch = /^data:([^;,]+(?:;[^;,]+)*)?,(.*)$/s.exec(dataUrl)
+  if (plainMatch) {
+    const mime = (plainMatch[1] || 'application/octet-stream').split(';')[0].trim()
+    const decoded = decodeURIComponent(plainMatch[2])
+    return { mime, base64: Buffer.from(decoded, 'utf8').toString('base64') }
+  }
+
+  throw new Error('Expected a data URL image')
 }
 
 function fieldPrompt(fields: ExtractFieldKey[]): string {
@@ -168,21 +190,29 @@ function toPayload(
   )
 }
 
-export async function googleExtract(
-  dataUrl: string,
-  filename: string,
-  fields: ExtractFieldKey[],
+function sanitizeProviderError(text: string): string {
+  // Strip accidental key-looking query params if an upstream echoes a URL
+  return text
+    .replace(/key=[^&\s"']+/gi, 'key=REDACTED')
+    .replace(/AIza[0-9A-Za-z_-]{10,}/g, 'REDACTED')
+    .slice(0, 240)
+}
+
+async function callGeminiModel(
+  model: string,
   apiKey: string,
-): Promise<ExtractPayload> {
-  if (!apiKey.trim()) throw new Error('Google API key is empty')
-
-  const { mime, base64 } = stripDataUrl(dataUrl)
-  const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`
-  const response = await fetch(url, {
+  mime: string,
+  base64: string,
+  prompt: string,
+): Promise<Response> {
+  // Prefer header auth so the key never appears in the request URL
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+  return fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
       contents: [
         {
@@ -198,20 +228,55 @@ export async function googleExtract(
       },
     }),
   })
+}
 
-  if (!response.ok) {
-    const text = await response.text()
-    // Never include the API key in error text
-    throw new Error(`Google Gemini error ${response.status}: ${text.slice(0, 200)}`)
+export async function googleExtract(
+  dataUrl: string,
+  filename: string,
+  fields: ExtractFieldKey[],
+  apiKey: string,
+): Promise<ExtractPayload> {
+  if (!apiKey.trim()) throw new Error('Google API key is empty')
+
+  const { mime, base64 } = stripDataUrl(dataUrl)
+  const normalizedMime = mime.toLowerCase().split(';')[0].trim()
+  if (!GOOGLE_SUPPORTED_MIME.has(normalizedMime)) {
+    throw new Error(
+      `Google Gemini does not support ${normalizedMime || 'this file type'}. Upload a JPEG or PNG receipt photo (seed SVG demos cannot use Google extract).`,
+    )
   }
 
-  const json = (await response.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-  }
-  const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
-  if (!content) throw new Error('Empty Google Gemini response')
+  const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
 
-  return toPayload(parseExtractJson(content), fields, 'google', false)
+  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
+  let lastError = 'Google Gemini request failed'
+  for (const model of models) {
+    const response = await callGeminiModel(model, apiKey, normalizedMime, base64, prompt)
+    if (!response.ok) {
+      const text = sanitizeProviderError(await response.text())
+      lastError = `Google Gemini error ${response.status} (${model}): ${text}`
+      // Try next model on not-found / unsupported
+      if (response.status === 404 || response.status === 400) continue
+      throw new Error(lastError)
+    }
+
+    const json = (await response.json()) as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+      error?: { message?: string }
+    }
+    if (json.error?.message) {
+      lastError = `Google Gemini error (${model}): ${sanitizeProviderError(json.error.message)}`
+      continue
+    }
+    const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+    if (!content) {
+      lastError = `Empty Google Gemini response (${model})`
+      continue
+    }
+    return toPayload(parseExtractJson(content), fields, 'google', false)
+  }
+
+  throw new Error(lastError)
 }
 
 export async function openaiExtract(
@@ -283,13 +348,28 @@ export async function extractFromUpload(opts: {
   const fields = normalizeFields(opts.fields)
   const googleKey = opts.googleApiKey?.trim() || ''
 
+  // When the user supplied a Google key, never silently degrade to mock.
   if (googleKey) {
     try {
       return await googleExtract(opts.dataUrl, opts.filename, fields, googleKey)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Google extract failed'
-      console.error('Google extract failed, trying fallback:', message)
-      // fall through to OpenAI / mock
+      console.error('Google extract failed:', message)
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = await openaiExtract(opts.dataUrl, opts.filename, fields)
+          return {
+            ...openai,
+            warning: `Google failed: ${message}. Using OpenAI.`,
+          }
+        } catch (openaiErr) {
+          const openaiMessage =
+            openaiErr instanceof Error ? openaiErr.message : 'OpenAI extract failed'
+          console.error('OpenAI fallback failed:', openaiMessage)
+          throw new Error(`Google failed: ${message}`)
+        }
+      }
+      throw new Error(`Google failed: ${message}`)
     }
   }
 
@@ -299,7 +379,10 @@ export async function extractFromUpload(opts: {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'OpenAI extract failed'
       console.error('OpenAI extract failed, falling back to mock:', message)
-      return mockExtract(opts.filename, opts.size, fields)
+      return {
+        ...mockExtract(opts.filename, opts.size, fields),
+        warning: `OpenAI failed: ${message}. Using mock.`,
+      }
     }
   }
 
