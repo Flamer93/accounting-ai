@@ -30,6 +30,7 @@ import {
   saveSettings,
   type AppSettings,
 } from './settings'
+import { normalizeReceiptImage } from './normalizeReceiptImage'
 import {
   loadDocuments,
   loadEntries,
@@ -222,6 +223,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
     if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
 
+    let normalizedDataUrl = doc.dataUrl
+    try {
+      const prepared = await normalizeReceiptImage(doc.dataUrl)
+      normalizedDataUrl = prepared.dataUrl
+    } catch {
+      // Fall back to the stored data URL if canvas normalize fails
+    }
+
     let res: Response
     try {
       res = await apiFetch(
@@ -230,9 +239,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           method: 'POST',
           headers,
           body: JSON.stringify({
-            dataUrl: doc.dataUrl,
+            dataUrl: normalizedDataUrl,
             filename: doc.name,
-            size: doc.dataUrl.length,
+            size: normalizedDataUrl.length,
             fields,
             ...(googleKey ? { googleApiKey: googleKey } : {}),
             ...(openaiKey ? { openaiApiKey: openaiKey } : {}),

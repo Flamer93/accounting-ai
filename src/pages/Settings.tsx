@@ -122,7 +122,7 @@ export function Settings() {
 
         <h3 className="settings-subhead">Google API key</h3>
         <p className="muted">
-          Gemini multimodal receipt extraction (Generative Language API). Sent as{' '}
+          Gemini multimodal OCR — prefers <code>gemini-2.5-pro</code>, then flash fallbacks. Sent as{' '}
           <code>X-Google-Api-Key</code>.
         </p>
         <form className="google-key-form" onSubmit={onSaveGoogleKey}>
@@ -150,7 +150,7 @@ export function Settings() {
 
         <h3 className="settings-subhead">OpenAI API key</h3>
         <p className="muted">
-          Vision extract with <code>gpt-4o-mini</code>. Sent as <code>X-OpenAI-Api-Key</code>. Used when no
+          Vision extract with <code>gpt-4o</code>. Sent as <code>X-OpenAI-Api-Key</code>. Used when no
           Google key is saved (or as fallback if Google fails).
           {openaiConfigured ? ' Host OPENAI_API_KEY is also available.' : ''}
         </p>

@@ -27,7 +27,12 @@ assert(
   !GEMINI_MODEL_FALLBACKS.some((m) => m.includes('1.5')),
   'fallback list has no retired gemini-1.5 models',
 )
-assert(GEMINI_MODEL_FALLBACKS[0] === 'gemini-2.0-flash', 'prefers gemini-2.0-flash first')
+assert(GEMINI_MODEL_FALLBACKS[0] === 'gemini-2.5-pro', 'prefers gemini-2.5-pro first for OCR')
+assert(
+  GEMINI_MODEL_FALLBACKS.findIndex((m) => m.includes('flash')) >
+    GEMINI_MODEL_FALLBACKS.findIndex((m) => m.includes('pro')),
+  'pro models appear before flash fallbacks',
+)
 console.log('gemini fallbacks:', GEMINI_MODEL_FALLBACKS.join(' → '))
 
 const fields = normalizeFields(['date', 'vendor', 'amount', 'memo', 'debitAccount', 'creditAccount'])

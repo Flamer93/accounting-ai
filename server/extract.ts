@@ -1,3 +1,5 @@
+import { isVisionSupportedMime, prepareImageForVision } from './imagePrep.ts'
+
 export type ExtractFieldKey =
   | 'date'
   | 'vendor'
@@ -28,23 +30,18 @@ export interface ExtractPayload {
   model?: string
 }
 
-/** Prefer current flash models; skip retired 1.5 ids that 404 on v1beta. */
+/**
+ * Prefer stronger Pro vision models for OCR, then flash fallbacks.
+ * Skip retired 1.5 ids that 404 on v1beta.
+ */
 export const GEMINI_MODEL_FALLBACKS = [
+  'gemini-2.5-pro',
+  'gemini-2.5-pro-preview-05-06',
   'gemini-2.0-flash',
   'gemini-2.5-flash',
   'gemini-2.0-flash-001',
   'gemini-flash-latest',
 ] as const
-
-const GOOGLE_SUPPORTED_MIME = new Set([
-  'image/jpeg',
-  'image/jpg',
-  'image/png',
-  'image/webp',
-  'image/heic',
-  'image/heif',
-  'image/gif',
-])
 
 const ALL_FIELDS: ExtractFieldKey[] = [
   'date',
@@ -132,37 +129,32 @@ export function mockExtract(filename: string, size: number, fields: ExtractField
   )
 }
 
-function stripDataUrl(dataUrl: string): { mime: string; base64: string } {
-  const base64Match = /^data:([^;,]+(?:;[^;,]+)*)?;base64,(.+)$/s.exec(dataUrl)
-  if (base64Match) {
-    const mime = base64Match[1].split(';')[0].trim()
-    return { mime, base64: base64Match[2] }
-  }
-
-  // Seed demos and some browsers use URL-encoded (non-base64) data URLs
-  const plainMatch = /^data:([^;,]+(?:;[^;,]+)*)?,(.*)$/s.exec(dataUrl)
-  if (plainMatch) {
-    const mime = (plainMatch[1] || 'application/octet-stream').split(';')[0].trim()
-    const decoded = decodeURIComponent(plainMatch[2])
-    return { mime, base64: Buffer.from(decoded, 'utf8').toString('base64') }
-  }
-
-  throw new Error('Expected a data URL image')
-}
-
 function fieldPrompt(fields: ExtractFieldKey[]): string {
   const specs: Record<ExtractFieldKey, string> = {
-    date: 'date (YYYY-MM-DD)',
-    vendor: 'vendor (string)',
-    amount: 'amount (number)',
-    memo: 'memo (short string)',
+    date: 'date (YYYY-MM-DD — prefer printed transaction/invoice date)',
+    vendor: 'vendor (merchant / store / payee name as printed)',
+    amount: 'amount (number — final total charged, not subtotal unless that is the only total)',
+    memo: 'memo (short description summarizing line items)',
     debitAccount:
       'debitAccount (4-digit code from 1000 Cash, 1100 AR, 1500 Equipment, 2000 AP, 3000 Equity, 4000 Service Revenue, 5000 Rent, 5100 Utilities, 5200 Office Supplies, 5300 Meals, 5400 Travel, 5500 Software)',
     creditAccount: 'creditAccount (usually 1000 Cash or 2000 AP)',
-    tax: 'tax (number, sales tax if present, else 0)',
+    tax: 'tax (number — sales tax / VAT if shown, else 0)',
     category: 'category (short spend category label)',
   }
   return fields.map((f) => specs[f]).join(', ')
+}
+
+function visionInstructions(filename: string, fields: ExtractFieldKey[]): string {
+  return [
+    'You are a careful receipt OCR and bookkeeping assistant.',
+    `Receipt image filename: ${filename}.`,
+    'Read the entire receipt carefully, including faint, small, skewed, or low-contrast text.',
+    'Identify vendor/merchant, transaction date, line items, subtotal, tax, tip (if any), and grand total.',
+    'Ignore decorative noise, ads, loyalty QR codes, and unrelated watermarks.',
+    'Prefer the grand total / amount due for "amount". Include sales tax in "tax" when that field is requested.',
+    'If a value is unclear, make the best grounded guess from visible digits/letters — do not invent unrelated merchants.',
+    `Reply with JSON only (no markdown) using exactly these keys: ${fieldPrompt(fields)}.`,
+  ].join(' ')
 }
 
 function parseExtractJson(content: string): Partial<ExtractPayload> {
@@ -294,15 +286,15 @@ export async function googleExtract(
 ): Promise<ExtractPayload> {
   if (!apiKey.trim()) throw new Error('Google API key is empty')
 
-  const { mime, base64 } = stripDataUrl(dataUrl)
-  const normalizedMime = mime.toLowerCase().split(';')[0].trim()
-  if (!GOOGLE_SUPPORTED_MIME.has(normalizedMime)) {
+  const prepared = prepareImageForVision(dataUrl)
+  const mime = prepared.mime
+  if (!isVisionSupportedMime(mime) || mime === 'image/svg+xml') {
     throw new Error(
-      `Google Gemini does not support ${normalizedMime || 'this file type'}. Upload a JPEG or PNG receipt photo (seed SVG demos cannot use Google extract).`,
+      `Google Gemini does not support ${mime || 'this file type'}. Upload a JPEG or PNG receipt photo (seed SVG demos cannot use Google extract).`,
     )
   }
 
-  const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
+  const prompt = visionInstructions(filename, fields)
   const deadlineMs = Date.now() + GEMINI_TOTAL_BUDGET_MS
 
   let lastError = 'Google Gemini request failed'
@@ -314,8 +306,8 @@ export async function googleExtract(
       const response = await callGeminiModel(
         model,
         apiKey,
-        normalizedMime,
-        base64,
+        mime,
+        prepared.base64,
         prompt,
         deadlineMs,
       )
@@ -370,26 +362,32 @@ export async function openaiExtract(
     throw new Error('OpenAI API key is empty')
   }
 
-  const { mime, base64 } = stripDataUrl(dataUrl)
+  const prepared = prepareImageForVision(dataUrl)
+  const mime = prepared.mime === 'image/jpg' ? 'image/jpeg' : prepared.mime
+  if (!isVisionSupportedMime(mime)) {
+    throw new Error(
+      `OpenAI vision does not support ${mime || 'this file type'}. Upload a JPEG or PNG receipt photo.`,
+    )
+  }
 
   const body = JSON.stringify({
-    model: 'gpt-4o-mini',
+    model: 'gpt-4o',
     response_format: { type: 'json_object' },
     messages: [
       {
         role: 'system',
-        content: `You extract bookkeeping fields from receipt images. Reply with JSON only using these keys: ${fieldPrompt(fields)}.`,
+        content: visionInstructions(filename, fields),
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: `Extract the requested journal fields from this receipt image named ${filename}.`,
+            text: `OCR this receipt carefully and return the structured JSON fields.`,
           },
           {
             type: 'image_url',
-            image_url: { url: `data:${mime};base64,${base64}` },
+            image_url: { url: `data:${mime};base64,${prepared.base64}` },
           },
         ],
       },
@@ -429,7 +427,7 @@ export async function openaiExtract(
 
       return {
         ...toPayload(JSON.parse(content) as Partial<ExtractPayload>, fields, 'openai', false),
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
