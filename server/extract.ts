@@ -357,19 +357,22 @@ export async function googleExtract(
   throw new Error(lastError)
 }
 
+const OPENAI_ATTEMPT_TIMEOUT_MS = 90_000
+const OPENAI_RETRYABLE = new Set([429, 503])
+
 export async function openaiExtract(
   dataUrl: string,
   filename: string,
   fields: ExtractFieldKey[],
   apiKey = process.env.OPENAI_API_KEY || '',
 ): Promise<ExtractPayload> {
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY is not set')
+  if (!apiKey.trim()) {
+    throw new Error('OpenAI API key is empty')
   }
 
   const { mime, base64 } = stripDataUrl(dataUrl)
 
-  const body = {
+  const body = JSON.stringify({
     model: 'gpt-4o-mini',
     response_format: { type: 'json_object' },
     messages: [
@@ -391,29 +394,57 @@ export async function openaiExtract(
         ],
       },
     ],
-  }
-
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
   })
 
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`OpenAI error ${response.status}: ${text.slice(0, 200)}`)
-  }
+  let lastError = 'OpenAI request failed'
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), OPENAI_ATTEMPT_TIMEOUT_MS)
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: controller.signal,
+      })
+      if (OPENAI_RETRYABLE.has(response.status)) {
+        const text = sanitizeProviderError(await response.text())
+        lastError = `OpenAI error ${response.status}: ${text}`
+        await sleep(500 * 3 ** attempt)
+        continue
+      }
+      if (!response.ok) {
+        const text = sanitizeProviderError(await response.text())
+        throw new Error(`OpenAI error ${response.status}: ${text}`)
+      }
 
-  const json = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>
-  }
-  const content = json.choices?.[0]?.message?.content
-  if (!content) throw new Error('Empty OpenAI response')
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>
+      }
+      const content = json.choices?.[0]?.message?.content
+      if (!content) throw new Error('Empty OpenAI response')
 
-  return toPayload(JSON.parse(content) as Partial<ExtractPayload>, fields, 'openai', false)
+      return {
+        ...toPayload(JSON.parse(content) as Partial<ExtractPayload>, fields, 'openai', false),
+        model: 'gpt-4o-mini',
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error(
+          `OpenAI timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS / 1000}s. Try a smaller JPEG/PNG or retry.`,
+        )
+      }
+      if (err instanceof Error && err.message.startsWith('OpenAI error')) throw err
+      lastError = err instanceof Error ? sanitizeProviderError(err.message) : 'OpenAI network error'
+      await sleep(500 * 3 ** attempt)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw new Error(lastError)
 }
 
 export async function extractFromUpload(opts: {
@@ -422,20 +453,23 @@ export async function extractFromUpload(opts: {
   dataUrl: string
   fields?: unknown
   googleApiKey?: string
+  openaiApiKey?: string
 }): Promise<ExtractPayload> {
   const fields = normalizeFields(opts.fields)
   const googleKey = opts.googleApiKey?.trim() || ''
+  const openaiKey = opts.openaiApiKey?.trim() || process.env.OPENAI_API_KEY?.trim() || ''
+  const openaiFromRequest = Boolean(opts.openaiApiKey?.trim())
 
-  // When the user supplied a Google key, never silently degrade to mock.
+  // Priority: Google → OpenAI (browser or host) → mock
   if (googleKey) {
     try {
       return await googleExtract(opts.dataUrl, opts.filename, fields, googleKey)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Google extract failed'
       console.error('Google extract failed:', message)
-      if (process.env.OPENAI_API_KEY) {
+      if (openaiKey) {
         try {
-          const openai = await openaiExtract(opts.dataUrl, opts.filename, fields)
+          const openai = await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey)
           return {
             ...openai,
             warning: `Google failed: ${message}. Using OpenAI.`,
@@ -451,16 +485,18 @@ export async function extractFromUpload(opts: {
     }
   }
 
-  if (process.env.OPENAI_API_KEY) {
+  if (openaiKey) {
     try {
-      return await openaiExtract(opts.dataUrl, opts.filename, fields)
+      return await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'OpenAI extract failed'
-      console.error('OpenAI extract failed, falling back to mock:', message)
-      return {
-        ...mockExtract(opts.filename, opts.size, fields),
-        warning: `OpenAI failed: ${message}. Using mock.`,
-      }
+      console.error('OpenAI extract failed:', message)
+      // Browser or host key present — never silent-mock
+      throw new Error(
+        openaiFromRequest || process.env.OPENAI_API_KEY
+          ? `OpenAI failed: ${message}`
+          : message,
+      )
     }
   }
 

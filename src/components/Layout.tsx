@@ -3,7 +3,7 @@ import { useApp } from '../AppContext'
 import { NAV_VIEW_META } from '../settings'
 
 export function Layout() {
-  const { settings, preferredProvider } = useApp()
+  const { settings, preferredProvider, openaiKeySaved, openaiConfigured } = useApp()
 
   const links = [
     { to: '/documents', label: 'Documents' },
@@ -48,8 +48,11 @@ export function Layout() {
         <div className="status-banner">
           <span className="badge ok">OpenAI extract</span>
           <span className="muted">
-            No Google key saved — host OpenAI vision will run on Extract. Add a Google API key in Settings
-            to prefer Gemini.
+            {openaiKeySaved
+              ? 'Using your browser-saved OpenAI API key (no Google key saved).'
+              : openaiConfigured
+                ? 'Using host OPENAI_API_KEY. Add a Google key in Settings to prefer Gemini.'
+                : 'OpenAI extract ready.'}
           </span>
         </div>
       )}
@@ -57,7 +60,7 @@ export function Layout() {
         <div className="status-banner">
           <span className="badge warn">Mock extract</span>
           <span className="muted">
-            No Google key in Settings and no host OpenAI key. Extracts create editable sample drafts.
+            No Google or OpenAI key in Settings and no host OpenAI key. Extracts create editable sample drafts.
           </span>
         </div>
       )}

@@ -18,6 +18,12 @@ import {
   saveGoogleApiKey,
 } from './googleKey'
 import {
+  clearOpenAiApiKey,
+  hasOpenAiApiKey,
+  loadOpenAiApiKey,
+  saveOpenAiApiKey,
+} from './openaiKey'
+import {
   enabledExtractFields,
   loadSettings,
   normalizeSettings,
@@ -51,8 +57,11 @@ interface AppState {
   addManualEntry: () => string
   openaiConfigured: boolean | null
   googleKeySaved: boolean
+  openaiKeySaved: boolean
   saveGoogleKey: (key: string) => void
   removeGoogleKey: () => void
+  saveOpenAiKey: (key: string) => void
+  removeOpenAiKey: () => void
   preferredProvider: ExtractProvider
 }
 
@@ -95,6 +104,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [period, setPeriod] = useState<PeriodFilter>({ from: '2026-01-01', to: '2026-12-31' })
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
   const [googleKeySaved, setGoogleKeySaved] = useState(false)
+  const [openaiKeySaved, setOpenaiKeySaved] = useState(false)
   const [ready, setReady] = useState(false)
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
@@ -117,10 +127,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEntries(loadEntries())
     setSettings(loadSettings())
     setGoogleKeySaved(hasGoogleApiKey())
+    setOpenaiKeySaved(hasOpenAiApiKey())
     setReady(true)
     const headers: HeadersInit = {}
     const googleKey = loadGoogleApiKey()
+    const openaiKey = loadOpenAiApiKey()
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
+    if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
     apiFetch('/api/health', { headers }, 10_000)
       .then((r) => r.json())
       .then((j: { openaiConfigured?: boolean }) => setOpenaiConfigured(Boolean(j.openaiConfigured)))
@@ -159,11 +172,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setGoogleKeySaved(false)
   }, [])
 
+  const saveOpenAiKey = useCallback((key: string) => {
+    saveOpenAiApiKey(key)
+    setOpenaiKeySaved(hasOpenAiApiKey())
+  }, [])
+
+  const removeOpenAiKey = useCallback(() => {
+    clearOpenAiApiKey()
+    setOpenaiKeySaved(false)
+  }, [])
+
   const preferredProvider: ExtractProvider = googleKeySaved
     ? 'google'
-    : openaiConfigured
+    : openaiKeySaved || openaiConfigured
       ? 'openai'
-      : openaiConfigured === null
+      : openaiConfigured === null && !openaiKeySaved
         ? null
         : 'mock'
 
@@ -194,8 +217,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const fields = enabledExtractFields(settingsRef.current)
     const headers: Record<string, string> = { 'Content-Type': 'application/json' }
     const googleKey = loadGoogleApiKey()
+    const openaiKey = loadOpenAiApiKey()
     // Send via header and body so a proxy that strips custom headers still works
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
+    if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
 
     let res: Response
     try {
@@ -210,6 +235,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             size: doc.dataUrl.length,
             fields,
             ...(googleKey ? { googleApiKey: googleKey } : {}),
+            ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
           }),
         },
         195_000,
@@ -228,9 +254,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw new Error((err as { error?: string }).error || `Extract failed (HTTP ${res.status})`)
     }
     const result = (await res.json()) as ExtractResult
-    if (googleKey && result.source === 'mock') {
+    if ((googleKey || openaiKey) && result.source === 'mock') {
       throw new Error(
-        'Google key was sent but the server returned a mock extract. Check that /api/extract received the key.',
+        'An AI key was sent but the server returned a mock extract. Check that /api/extract received the key.',
       )
     }
     const entry = entryFromExtract(doc.id, result)
@@ -340,8 +366,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addManualEntry,
       openaiConfigured,
       googleKeySaved,
+      openaiKeySaved,
       saveGoogleKey,
       removeGoogleKey,
+      saveOpenAiKey,
+      removeOpenAiKey,
       preferredProvider,
     }),
     [
@@ -359,8 +388,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       addManualEntry,
       openaiConfigured,
       googleKeySaved,
+      openaiKeySaved,
       saveGoogleKey,
       removeGoogleKey,
+      saveOpenAiKey,
+      removeOpenAiKey,
       preferredProvider,
     ],
   )

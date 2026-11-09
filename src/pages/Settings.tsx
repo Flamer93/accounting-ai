@@ -15,13 +15,18 @@ export function Settings() {
     updateSettings,
     openaiConfigured,
     googleKeySaved,
+    openaiKeySaved,
     saveGoogleKey,
     removeGoogleKey,
+    saveOpenAiKey,
+    removeOpenAiKey,
     preferredProvider,
   } = useApp()
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [googleKeyDraft, setGoogleKeyDraft] = useState('')
   const [googleKeyMessage, setGoogleKeyMessage] = useState<string | null>(null)
+  const [openaiKeyDraft, setOpenaiKeyDraft] = useState('')
+  const [openaiKeyMessage, setOpenaiKeyMessage] = useState<string | null>(null)
 
   function onNavToggle(key: NavViewKey, enabled: boolean) {
     updateSettings(toggleNavView(settings, key, enabled))
@@ -54,6 +59,23 @@ export function Settings() {
     setGoogleKeyMessage('Google API key removed from this browser.')
   }
 
+  function onSaveOpenAiKey(e: FormEvent) {
+    e.preventDefault()
+    if (!openaiKeyDraft.trim()) {
+      setOpenaiKeyMessage('Enter an OpenAI API key, or use Clear to remove a saved key.')
+      return
+    }
+    saveOpenAiKey(openaiKeyDraft)
+    setOpenaiKeyDraft('')
+    setOpenaiKeyMessage('OpenAI API key saved in this browser only (localStorage).')
+  }
+
+  function onClearOpenAiKey() {
+    removeOpenAiKey()
+    setOpenaiKeyDraft('')
+    setOpenaiKeyMessage('OpenAI API key removed from this browser.')
+  }
+
   return (
     <div>
       <div className="page-head">
@@ -64,14 +86,7 @@ export function Settings() {
       </div>
 
       <div className="panel settings-block">
-        <h2>Google API key</h2>
-        <p className="muted" style={{ marginTop: 0 }}>
-          Paste a <strong>Google API key</strong> for Gemini multimodal receipt extraction (Generative
-          Language API). The key stays in this browser&apos;s localStorage for private single-user use —
-          it is never committed, never logged, and only sent to the server on each Extract request via
-          the <code>X-Google-Api-Key</code> header (request-scoped). Anyone with access to this browser
-          profile can read localStorage.
-        </p>
+        <h2>API keys</h2>
         <div className="status-banner" style={{ marginBottom: '0.85rem' }}>
           {preferredProvider === 'google' && (
             <>
@@ -81,9 +96,11 @@ export function Settings() {
           )}
           {preferredProvider === 'openai' && (
             <>
-              <span className="badge ok">OpenAI fallback</span>
+              <span className="badge ok">OpenAI preferred</span>
               <span className="muted">
-                No Google key here; host <code>OPENAI_API_KEY</code> is available.
+                {openaiKeySaved
+                  ? 'Using the OpenAI key saved in this browser.'
+                  : 'Using host OPENAI_API_KEY (no browser Google key).'}
               </span>
             </>
           )}
@@ -91,12 +108,23 @@ export function Settings() {
             <>
               <span className="badge warn">Mock extract</span>
               <span className="muted">
-                No Google key saved and no host OpenAI key — extracts use editable sample drafts.
+                No Google or OpenAI key saved (and no host OpenAI) — extracts use editable sample drafts.
               </span>
             </>
           )}
           {preferredProvider === null && <span className="muted">Checking extract provider…</span>}
         </div>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Priority: Google (Settings) → OpenAI (Settings or host <code>OPENAI_API_KEY</code>) → mock. Keys stay
+          in browser localStorage only, are never logged, and are sent per Extract request via headers. Do not
+          paste keys into chat.
+        </p>
+
+        <h3 className="settings-subhead">Google API key</h3>
+        <p className="muted">
+          Gemini multimodal receipt extraction (Generative Language API). Sent as{' '}
+          <code>X-Google-Api-Key</code>.
+        </p>
         <form className="google-key-form" onSubmit={onSaveGoogleKey}>
           <label className="field">
             <span>Google API key</span>
@@ -119,33 +147,44 @@ export function Settings() {
           </div>
         </form>
         {googleKeyMessage && <p className="muted">{googleKeyMessage}</p>}
+
+        <h3 className="settings-subhead">OpenAI API key</h3>
         <p className="muted">
-          Priority: Google key (Settings) → host <code>OPENAI_API_KEY</code> → mock. Do not paste keys into
-          chat.
+          Vision extract with <code>gpt-4o-mini</code>. Sent as <code>X-OpenAI-Api-Key</code>. Used when no
+          Google key is saved (or as fallback if Google fails).
+          {openaiConfigured ? ' Host OPENAI_API_KEY is also available.' : ''}
         </p>
+        <form className="google-key-form" onSubmit={onSaveOpenAiKey}>
+          <label className="field">
+            <span>OpenAI API key</span>
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder={openaiKeySaved ? '••••••••  (saved — enter a new key to replace)' : 'sk-…'}
+              value={openaiKeyDraft}
+              onChange={(e) => setOpenaiKeyDraft(e.target.value)}
+            />
+          </label>
+          <div className="cta-row">
+            <button type="submit" className="btn">
+              Save
+            </button>
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={onClearOpenAiKey}
+              disabled={!openaiKeySaved}
+            >
+              Clear
+            </button>
+          </div>
+        </form>
+        {openaiKeyMessage && <p className="muted">{openaiKeyMessage}</p>}
       </div>
 
       <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
         <h2>AI extraction fields</h2>
-        <div className="status-banner" style={{ marginBottom: '0.85rem' }}>
-          {openaiConfigured === true ? (
-            <>
-              <span className="badge ok">Host OpenAI available</span>
-              <span className="muted">
-                Used only when no Google key is saved. Host secret is not stored in the browser.
-              </span>
-            </>
-          ) : openaiConfigured === false ? (
-            <>
-              <span className="badge pending">Host OpenAI unset</span>
-              <span className="muted">
-                Optional fallback: set <code>OPENAI_API_KEY</code> in the published/host environment.
-              </span>
-            </>
-          ) : (
-            <span className="muted">Checking host OpenAI…</span>
-          )}
-        </div>
         <p className="muted" style={{ marginTop: 0 }}>
           Amount is always required. Keep at least one of debit or credit account enabled so double-entry
           drafts can be built (the other side defaults when hidden).

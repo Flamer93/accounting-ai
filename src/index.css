@@ -530,6 +530,12 @@ table.ledger th.num {
   font-size: 1.25rem;
 }
 
+.settings-subhead {
+  margin: 1.1rem 0 0.35rem;
+  font-family: 'Fraunces', serif;
+  font-size: 1.05rem;
+}
+
 .settings-list {
   display: grid;
   gap: 0.55rem;

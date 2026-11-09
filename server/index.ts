@@ -43,19 +43,25 @@ async function createApp() {
   app.use(
     cors({
       origin: true,
-      allowedHeaders: ['Content-Type', 'X-Google-Api-Key'],
+      allowedHeaders: ['Content-Type', 'X-Google-Api-Key', 'X-OpenAI-Api-Key'],
     }),
   )
   // Receipt dataUrls (JPEG/PNG) can be several MB when JSON-wrapped
   app.use(express.json({ limit: '20mb' }))
 
   app.get('/api/health', (req, res) => {
-    const headerKey = String(req.header('x-google-api-key') || '').trim()
+    const googleHeader = String(req.header('x-google-api-key') || '').trim()
+    const openaiHeader = String(req.header('x-openai-api-key') || '').trim()
     res.json({
       ok: true,
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
-      googleKeyPresent: Boolean(headerKey),
-      extractPriority: ['google (request key)', 'openai (host env)', 'mock'],
+      googleKeyPresent: Boolean(googleHeader),
+      openaiKeyPresent: Boolean(openaiHeader),
+      extractPriority: [
+        'google (request key)',
+        'openai (request key or host env)',
+        'mock',
+      ],
     })
   })
 
@@ -88,6 +94,7 @@ async function createApp() {
 
       // Request-scoped only — never log or persist
       const googleApiKey = String(req.header('x-google-api-key') || req.body?.googleApiKey || '').trim()
+      const openaiApiKey = String(req.header('x-openai-api-key') || req.body?.openaiApiKey || '').trim()
 
       const result = await withTimeout(
         extractFromUpload({
@@ -96,6 +103,7 @@ async function createApp() {
           dataUrl,
           fields,
           googleApiKey: googleApiKey || undefined,
+          openaiApiKey: openaiApiKey || undefined,
         }),
         190_000,
         'Extract',
