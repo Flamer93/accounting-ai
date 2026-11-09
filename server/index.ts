@@ -69,6 +69,10 @@ async function createApp() {
     try {
       const file = req.file
       let dataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : ''
+      const bottomDataUrl =
+        typeof req.body?.bottomDataUrl === 'string' && req.body.bottomDataUrl.startsWith('data:')
+          ? req.body.bottomDataUrl
+          : undefined
       let filename = typeof req.body?.filename === 'string' ? req.body.filename : 'receipt'
       let size = Number(req.body?.size || 0)
 
@@ -101,6 +105,7 @@ async function createApp() {
           filename,
           size: size || dataUrl.length,
           dataUrl,
+          bottomDataUrl,
           fields,
           googleApiKey: googleApiKey || undefined,
           openaiApiKey: openaiApiKey || undefined,

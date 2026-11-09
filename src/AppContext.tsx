@@ -233,9 +233,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
 
     let normalizedDataUrl = doc.dataUrl
+    let bottomDataUrl: string | undefined
     try {
       const prepared = await normalizeReceiptImage(doc.dataUrl)
       normalizedDataUrl = prepared.dataUrl
+      bottomDataUrl = prepared.bottomDataUrl
     } catch {
       // Fall back to the stored data URL if canvas normalize fails
     }
@@ -249,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           headers,
           body: JSON.stringify({
             dataUrl: normalizedDataUrl,
+            ...(bottomDataUrl ? { bottomDataUrl } : {}),
             filename: doc.name,
             size: normalizedDataUrl.length,
             fields,
@@ -280,12 +283,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const entry = entryFromExtract(doc.id, result)
     const sourceLabel =
       result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
+    const lineCount = result.lineItems?.length
     const summaryParts = [
       sourceLabel,
       result.model ? `(${result.model})` : '',
       `$${Number(result.amount).toFixed(2)}`,
       result.vendor,
       result.memo,
+      lineCount ? `${lineCount} line item${lineCount === 1 ? '' : 's'}` : '',
       entry.status === 'approved' ? 'posted to books' : 'draft — Approve & post in Journal',
       result.warning,
     ].filter(Boolean)

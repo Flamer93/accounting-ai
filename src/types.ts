@@ -58,6 +58,8 @@ export interface ExtractResult {
   fields: string[]
   warning?: string
   model?: string
+  rawText?: string
+  lineItems?: Array<{ description: string; amount?: number }>
 }
 
 export interface PeriodFilter {

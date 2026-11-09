@@ -12,6 +12,11 @@ export type ExtractFieldKey =
 
 export type ExtractSource = 'google' | 'openai' | 'mock'
 
+export interface ReceiptLineItem {
+  description: string
+  amount?: number
+}
+
 export interface ExtractPayload {
   date?: string
   vendor?: string
@@ -26,9 +31,15 @@ export interface ExtractPayload {
   fields: ExtractFieldKey[]
   /** Present when a preferred provider failed and a lower-priority provider was used. */
   warning?: string
-  /** Gemini model id that produced the result (Google extracts only). */
+  /** Gemini / OpenAI model id that produced the result. */
   model?: string
+  /** Full OCR pass transcript — forces the model to read the whole image first. */
+  rawText?: string
+  /** Every purchased line before totals — intermediate evidence for amount/memo. */
+  lineItems?: ReceiptLineItem[]
 }
+
+type VisionImage = { mime: string; base64: string; label: string }
 
 /**
  * Prefer stronger Pro vision models for OCR, then flash fallbacks.
@@ -131,41 +142,84 @@ export function mockExtract(filename: string, size: number, fields: ExtractField
 
 function fieldPrompt(fields: ExtractFieldKey[]): string {
   const specs: Record<ExtractFieldKey, string> = {
-    date: 'date (YYYY-MM-DD — prefer printed transaction/invoice date)',
-    vendor: 'vendor (merchant / store / payee name as printed)',
-    amount: 'amount (number — final total charged, not subtotal unless that is the only total)',
-    memo: 'memo (short description summarizing line items)',
+    date: 'date (YYYY-MM-DD — prefer printed transaction/invoice date near the header or footer)',
+    vendor: 'vendor (merchant / store / payee name from the header)',
+    amount:
+      'amount (number — MUST be the final TOTAL / Amount Due / Grand Total charged; never a single early line item or subtotal unless that is the only total on the receipt)',
+    memo: 'memo (short description summarizing ALL line items, not only the first one)',
     debitAccount:
       'debitAccount (4-digit code from 1000 Cash, 1100 AR, 1500 Equipment, 2000 AP, 3000 Equity, 4000 Service Revenue, 5000 Rent, 5100 Utilities, 5200 Office Supplies, 5300 Meals, 5400 Travel, 5500 Software)',
     creditAccount: 'creditAccount (usually 1000 Cash or 2000 AP)',
-    tax: 'tax (number — sales tax / VAT if shown, else 0)',
-    category: 'category (short spend category label)',
+    tax: 'tax (number — sales tax / VAT / GST if shown anywhere on the receipt, else 0)',
+    category: 'category (short spend category label based on the full purchase)',
   }
   return fields.map((f) => specs[f]).join(', ')
 }
 
 function visionInstructions(filename: string, fields: ExtractFieldKey[]): string {
   return [
-    'You are a careful receipt OCR and bookkeeping assistant.',
+    'You are a meticulous receipt OCR and bookkeeping assistant.',
     `Receipt image filename: ${filename}.`,
-    'Read the entire receipt carefully, including faint, small, skewed, or low-contrast text.',
-    'Identify vendor/merchant, transaction date, line items, subtotal, tax, tip (if any), and grand total.',
-    'Ignore decorative noise, ads, loyalty QR codes, and unrelated watermarks.',
-    'Prefer the grand total / amount due for "amount". Include sales tax in "tax" when that field is requested.',
-    'If a value is unclear, make the best grounded guess from visible digits/letters — do not invent unrelated merchants.',
-    `Reply with JSON only (no markdown) using exactly these keys: ${fieldPrompt(fields)}.`,
+    'FULL-IMAGE SCAN (mandatory): read the entire image top→bottom and left→right before answering.',
+    'Do NOT stop after the header or the first few line items. Tall/long receipts must be read all the way through the footer.',
+    'Capture in order: header/vendor, address/phone if present, date/time, EVERY purchased line item, subtotal, discounts, tax, tip/gratuity, TOTAL/amount due, payment method, change, and footer.',
+    'If a second image is attached, it is a bottom detail crop of the same receipt — use it to confirm totals/tax/tip/payment that may be small or faint; reconcile with the full image (full image wins on conflicts about which lines exist).',
+    'Ignore decorative noise, ads, loyalty QR codes, barcodes-as-art, and unrelated watermarks — but still scan past them.',
+    'amount must be the final TOTAL charged (labels like TOTAL, AMOUNT DUE, GRAND TOTAL, BALANCE DUE). Do not use the first line-item price as amount.',
+    'If a value is unclear, make the best grounded guess from visible digits/letters — do not invent unrelated merchants or items.',
+    'First fill intermediate OCR evidence, then the accounting fields.',
+    `Reply with JSON only (no markdown) using ALL of these keys: rawText (string — near-complete transcript of readable text top to bottom), lineItems (array of {description, amount?} for every purchased item, excluding subtotal/tax/tip/total rows), tip (number, 0 if none), ${fieldPrompt(fields)}.`,
   ].join(' ')
 }
 
-function parseExtractJson(content: string): Partial<ExtractPayload> {
+function visionUserPrompt(hasBottomCrop: boolean): string {
+  const parts = [
+    'Scan the full receipt image completely (top→bottom, left→right).',
+    'Transcribe into rawText, list every line item in lineItems, then fill the accounting fields.',
+    'Use the final TOTAL for amount — not the first line.',
+  ]
+  if (hasBottomCrop) {
+    parts.push(
+      'A second image is the bottom portion only — use it to verify total, tax, tip, and payment lines.',
+    )
+  }
+  return parts.join(' ')
+}
+
+type ParsedVisionJson = Partial<ExtractPayload> & {
+  tip?: number
+  lineItems?: unknown
+  rawText?: unknown
+}
+
+function parseExtractJson(content: string): ParsedVisionJson {
   const trimmed = content.trim()
   const fenced = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(trimmed)
   const raw = fenced ? fenced[1].trim() : trimmed
-  return JSON.parse(raw) as Partial<ExtractPayload>
+  return JSON.parse(raw) as ParsedVisionJson
+}
+
+function normalizeLineItems(raw: unknown): ReceiptLineItem[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const items = raw
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null
+      const rec = row as Record<string, unknown>
+      const description = String(rec.description || rec.name || rec.item || '').trim()
+      if (!description) return null
+      const amountRaw = rec.amount ?? rec.price ?? rec.total
+      const amount = amountRaw === undefined || amountRaw === null ? undefined : Number(amountRaw)
+      return {
+        description,
+        amount: amount !== undefined && Number.isFinite(amount) ? amount : undefined,
+      } satisfies ReceiptLineItem
+    })
+    .filter((row): row is ReceiptLineItem => Boolean(row))
+  return items.length ? items : undefined
 }
 
 function toPayload(
-  parsed: Partial<ExtractPayload>,
+  parsed: ParsedVisionJson,
   fields: ExtractFieldKey[],
   source: ExtractSource,
   editRequired: boolean,
@@ -175,14 +229,25 @@ function toPayload(
     throw new Error('Incomplete extraction JSON: amount required')
   }
   const taxNum = parsed.tax === undefined || parsed.tax === null ? undefined : Number(parsed.tax)
-  return pickFields(
+  const lineItems = normalizeLineItems(parsed.lineItems)
+  const rawText = typeof parsed.rawText === 'string' ? parsed.rawText.trim() : undefined
+  let memo = parsed.memo ? String(parsed.memo) : ''
+  if ((!memo || memo === 'Receipt purchase') && lineItems?.length) {
+    memo = lineItems
+      .map((i) => i.description)
+      .slice(0, 6)
+      .join(', ')
+  }
+  if (!memo) memo = 'Receipt purchase'
+
+  const payload = pickFields(
     {
       date: parsed.date ? String(parsed.date) : new Date().toISOString().slice(0, 10),
       vendor: parsed.vendor ? String(parsed.vendor) : 'Unknown vendor',
       amount,
       debitAccount: String(parsed.debitAccount || '5200'),
       creditAccount: String(parsed.creditAccount || '1000'),
-      memo: parsed.memo ? String(parsed.memo) : 'Receipt purchase',
+      memo,
       tax: taxNum !== undefined && Number.isFinite(taxNum) ? taxNum : 0,
       category: parsed.category ? String(parsed.category) : 'General',
       editRequired,
@@ -190,6 +255,25 @@ function toPayload(
     },
     fields,
   )
+  if (rawText) payload.rawText = rawText.slice(0, 8000)
+  if (lineItems) payload.lineItems = lineItems
+  return payload
+}
+
+function prepareVisionImages(dataUrl: string, bottomDataUrl?: string): VisionImage[] {
+  const primary = prepareImageForVision(dataUrl)
+  const images: VisionImage[] = [
+    { mime: primary.mime === 'image/jpg' ? 'image/jpeg' : primary.mime, base64: primary.base64, label: 'full' },
+  ]
+  if (bottomDataUrl) {
+    const bottom = prepareImageForVision(bottomDataUrl)
+    images.push({
+      mime: bottom.mime === 'image/jpg' ? 'image/jpeg' : bottom.mime,
+      base64: bottom.base64,
+      label: 'bottom',
+    })
+  }
+  return images
 }
 
 function sanitizeProviderError(text: string): string {
@@ -211,22 +295,25 @@ function sleep(ms: number): Promise<void> {
 async function callGeminiModel(
   model: string,
   apiKey: string,
-  mime: string,
-  base64: string,
+  images: VisionImage[],
   prompt: string,
   deadlineMs: number,
 ): Promise<Response> {
   // Prefer header auth so the key never appears in the request URL
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }]
+  for (const image of images) {
+    if (image.label === 'bottom') {
+      parts.push({
+        text: 'Bottom detail crop of the same receipt (totals / tax / tip / payment zone):',
+      })
+    } else {
+      parts.push({ text: 'Full receipt image (scan entirely):' })
+    }
+    parts.push({ inline_data: { mime_type: image.mime, data: image.base64 } })
+  }
   const body = JSON.stringify({
-    contents: [
-      {
-        parts: [
-          { text: prompt },
-          { inline_data: { mime_type: mime, data: base64 } },
-        ],
-      },
-    ],
+    contents: [{ parts }],
     generationConfig: {
       responseMimeType: 'application/json',
       temperature: 0.1,
@@ -283,18 +370,20 @@ export async function googleExtract(
   filename: string,
   fields: ExtractFieldKey[],
   apiKey: string,
+  bottomDataUrl?: string,
 ): Promise<ExtractPayload> {
   if (!apiKey.trim()) throw new Error('Google API key is empty')
 
-  const prepared = prepareImageForVision(dataUrl)
-  const mime = prepared.mime
-  if (!isVisionSupportedMime(mime) || mime === 'image/svg+xml') {
-    throw new Error(
-      `Google Gemini does not support ${mime || 'this file type'}. Upload a JPEG or PNG receipt photo (seed SVG demos cannot use Google extract).`,
-    )
+  const images = prepareVisionImages(dataUrl, bottomDataUrl)
+  for (const image of images) {
+    if (!isVisionSupportedMime(image.mime) || image.mime === 'image/svg+xml') {
+      throw new Error(
+        `Google Gemini does not support ${image.mime || 'this file type'}. Upload a JPEG or PNG receipt photo (seed SVG demos cannot use Google extract).`,
+      )
+    }
   }
 
-  const prompt = visionInstructions(filename, fields)
+  const prompt = `${visionInstructions(filename, fields)} ${visionUserPrompt(images.length > 1)}`
   const deadlineMs = Date.now() + GEMINI_TOTAL_BUDGET_MS
 
   let lastError = 'Google Gemini request failed'
@@ -306,8 +395,7 @@ export async function googleExtract(
       const response = await callGeminiModel(
         model,
         apiKey,
-        mime,
-        prepared.base64,
+        images,
         prompt,
         deadlineMs,
       )
@@ -357,17 +445,40 @@ export async function openaiExtract(
   filename: string,
   fields: ExtractFieldKey[],
   apiKey = process.env.OPENAI_API_KEY || '',
+  bottomDataUrl?: string,
 ): Promise<ExtractPayload> {
   if (!apiKey.trim()) {
     throw new Error('OpenAI API key is empty')
   }
 
-  const prepared = prepareImageForVision(dataUrl)
-  const mime = prepared.mime === 'image/jpg' ? 'image/jpeg' : prepared.mime
-  if (!isVisionSupportedMime(mime)) {
-    throw new Error(
-      `OpenAI vision does not support ${mime || 'this file type'}. Upload a JPEG or PNG receipt photo.`,
-    )
+  const images = prepareVisionImages(dataUrl, bottomDataUrl)
+  for (const image of images) {
+    if (!isVisionSupportedMime(image.mime)) {
+      throw new Error(
+        `OpenAI vision does not support ${image.mime || 'this file type'}. Upload a JPEG or PNG receipt photo.`,
+      )
+    }
+  }
+
+  const userContent: Array<Record<string, unknown>> = [
+    {
+      type: 'text',
+      text: visionUserPrompt(images.length > 1),
+    },
+  ]
+  for (const image of images) {
+    if (image.label === 'bottom') {
+      userContent.push({
+        type: 'text',
+        text: 'Bottom detail crop of the same receipt (totals / tax / tip / payment zone):',
+      })
+    } else {
+      userContent.push({ type: 'text', text: 'Full receipt image (scan entirely):' })
+    }
+    userContent.push({
+      type: 'image_url',
+      image_url: { url: `data:${image.mime};base64,${image.base64}` },
+    })
   }
 
   const body = JSON.stringify({
@@ -380,16 +491,7 @@ export async function openaiExtract(
       },
       {
         role: 'user',
-        content: [
-          {
-            type: 'text',
-            text: `OCR this receipt carefully and return the structured JSON fields.`,
-          },
-          {
-            type: 'image_url',
-            image_url: { url: `data:${mime};base64,${prepared.base64}` },
-          },
-        ],
+        content: userContent,
       },
     ],
   })
@@ -426,7 +528,7 @@ export async function openaiExtract(
       if (!content) throw new Error('Empty OpenAI response')
 
       return {
-        ...toPayload(JSON.parse(content) as Partial<ExtractPayload>, fields, 'openai', false),
+        ...toPayload(parseExtractJson(content), fields, 'openai', false),
         model: 'gpt-4o',
       }
     } catch (err) {
@@ -449,6 +551,7 @@ export async function extractFromUpload(opts: {
   filename: string
   size: number
   dataUrl: string
+  bottomDataUrl?: string
   fields?: unknown
   googleApiKey?: string
   openaiApiKey?: string
@@ -457,17 +560,18 @@ export async function extractFromUpload(opts: {
   const googleKey = opts.googleApiKey?.trim() || ''
   const openaiKey = opts.openaiApiKey?.trim() || process.env.OPENAI_API_KEY?.trim() || ''
   const openaiFromRequest = Boolean(opts.openaiApiKey?.trim())
+  const bottom = opts.bottomDataUrl
 
   // Priority: Google → OpenAI (browser or host) → mock
   if (googleKey) {
     try {
-      return await googleExtract(opts.dataUrl, opts.filename, fields, googleKey)
+      return await googleExtract(opts.dataUrl, opts.filename, fields, googleKey, bottom)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Google extract failed'
       console.error('Google extract failed:', message)
       if (openaiKey) {
         try {
-          const openai = await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey)
+          const openai = await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey, bottom)
           return {
             ...openai,
             warning: `Google failed: ${message}. Using OpenAI.`,
@@ -485,7 +589,7 @@ export async function extractFromUpload(opts: {
 
   if (openaiKey) {
     try {
-      return await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey)
+      return await openaiExtract(opts.dataUrl, opts.filename, fields, openaiKey, bottom)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'OpenAI extract failed'
       console.error('OpenAI extract failed:', message)
