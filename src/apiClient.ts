@@ -2,7 +2,7 @@
 export async function apiFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
-  timeoutMs = 65_000,
+  timeoutMs = 195_000,
 ): Promise<Response> {
   const controller = new AbortController()
   const external = init.signal

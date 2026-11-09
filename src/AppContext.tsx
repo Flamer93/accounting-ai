@@ -199,17 +199,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     let res: Response
     try {
-      res = await apiFetch('/api/extract', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          dataUrl: doc.dataUrl,
-          filename: doc.name,
-          size: doc.dataUrl.length,
-          fields,
-          ...(googleKey ? { googleApiKey: googleKey } : {}),
-        }),
-      })
+      res = await apiFetch(
+        '/api/extract',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            dataUrl: doc.dataUrl,
+            filename: doc.name,
+            size: doc.dataUrl.length,
+            fields,
+            ...(googleKey ? { googleApiKey: googleKey } : {}),
+          }),
+        },
+        195_000,
+      )
     } catch (err) {
       setDocuments((prev) =>
         prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),

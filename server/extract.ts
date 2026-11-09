@@ -208,8 +208,8 @@ function sanitizeProviderError(text: string): string {
     .slice(0, 240)
 }
 
-const GEMINI_ATTEMPT_TIMEOUT_MS = 25_000
-const GEMINI_TOTAL_BUDGET_MS = 55_000
+const GEMINI_ATTEMPT_TIMEOUT_MS = 90_000
+const GEMINI_TOTAL_BUDGET_MS = 180_000
 const GEMINI_RETRYABLE = new Set([429, 503])
 
 function sleep(ms: number): Promise<void> {

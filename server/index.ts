@@ -97,7 +97,7 @@ async function createApp() {
           fields,
           googleApiKey: googleApiKey || undefined,
         }),
-        60_000,
+        190_000,
         'Extract',
       )
       res.json(result)
@@ -159,9 +159,9 @@ createApp()
           : 'OPENAI_API_KEY unset — Google request key or mock extractor',
       )
     })
-    // Keep sockets alive long enough for Gemini retries, but don't hang forever
-    server.requestTimeout = 70_000
-    server.headersTimeout = 75_000
+    // Keep sockets alive long enough for Gemini (~180s budget + retries)
+    server.requestTimeout = 200_000
+    server.headersTimeout = 205_000
     server.keepAliveTimeout = 10_000
   })
   .catch((err) => {
