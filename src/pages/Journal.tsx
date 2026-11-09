@@ -1,6 +1,8 @@
+import { Link } from 'react-router-dom'
 import { useState } from 'react'
 import { formatMoney, inPeriod, lineTotals, validateEntry } from '../accounting'
 import { CHART_OF_ACCOUNTS } from '../chartOfAccounts'
+import { BooksPostingHint } from '../components/BooksPostingHint'
 import { PeriodControls } from '../components/PeriodControls'
 import { useApp } from '../AppContext'
 import type { JournalEntry } from '../types'
@@ -10,11 +12,14 @@ export function Journal() {
     useApp()
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
+  const [notice, setNotice] = useState<string | null>(null)
   const fields = settings.extractFields
 
   const visible = entries
     .filter((e) => inPeriod(e.date, period))
     .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+
+  const draftCount = visible.filter((e) => e.status !== 'approved').length
 
   function current(entry: JournalEntry): JournalEntry {
     return drafts[entry.id] ?? entry
@@ -35,24 +40,27 @@ export function Journal() {
         delete copy[entry.id]
         return copy
       })
+      setNotice(null)
     }
   }
 
-  function approve(entry: JournalEntry) {
+  function approveAndPost(entry: JournalEntry) {
     const next = current(entry)
-    const saveErrs = updateEntry(next)
-    if (saveErrs.length) {
-      setErrors((prev) => ({ ...prev, [entry.id]: saveErrs }))
+    const errs = validateEntry(next)
+    if (errs.length) {
+      setErrors((prev) => ({ ...prev, [entry.id]: errs }))
+      setNotice('Fix the entry before Approve & post — drafts stay off statements.')
       return
     }
-    const errs = approveEntry(entry.id)
-    setErrors((prev) => ({ ...prev, [entry.id]: errs }))
-    if (!errs.length) {
+    const approveErrs = approveEntry(entry.id, next)
+    setErrors((prev) => ({ ...prev, [entry.id]: approveErrs }))
+    if (!approveErrs.length) {
       setDrafts((prev) => {
         const copy = { ...prev }
         delete copy[entry.id]
         return copy
       })
+      setNotice('Posted to the books — T-accounts and statements now include this entry.')
     }
   }
 
@@ -61,28 +69,56 @@ export function Journal() {
       <div className="page-head">
         <div>
           <h1>General Journal</h1>
-          <p>Review extracted drafts, fix accounts, then approve into the books.</p>
+          <p>
+            Extract creates drafts. Use <strong>Approve &amp; post</strong> to put a balanced entry
+            into T-accounts, trial balance, and statements.
+          </p>
         </div>
         <div className="cta-row">
           <PeriodControls />
-          <button className="btn" onClick={() => addManualEntry()}>
+          <button className="btn secondary" onClick={() => addManualEntry()}>
             New entry
           </button>
         </div>
       </div>
 
+      <BooksPostingHint />
+
+      {notice && (
+        <div className="status-banner">
+          <span className="badge ok">Posted</span>
+          <span className="muted">{notice}</span>
+          <Link className="btn secondary" to="/t-accounts">
+            Open T-accounts
+          </Link>
+          <Link className="btn ghost" to="/trial-balance">
+            Trial balance
+          </Link>
+        </div>
+      )}
+
+      {draftCount > 0 && (
+        <div className="status-banner warn-banner">
+          <span className="badge warn">{draftCount} awaiting post</span>
+          <span className="muted">
+            Scroll to each draft and click Approve &amp; post. Until then, statements ignore them.
+          </span>
+        </div>
+      )}
+
       <div className="panel">
         {visible.map((entry) => {
           const e = current(entry)
           const totals = lineTotals(e.lines)
+          const isDraft = e.status !== 'approved'
           return (
-            <div className="entry-editor" key={entry.id}>
+            <div className={`entry-editor ${isDraft ? 'entry-draft' : ''}`} key={entry.id}>
               <div className="cta-row" style={{ justifyContent: 'space-between' }}>
                 <div className="cta-row">
-                  {e.status === 'approved' ? (
-                    <span className="badge ok">Approved</span>
+                  {isDraft ? (
+                    <span className="badge pending">Draft — not on statements</span>
                   ) : (
-                    <span className="badge pending">Draft</span>
+                    <span className="badge ok">Approved &amp; posted</span>
                   )}
                   {e.editRequired && <span className="badge warn">Edit required</span>}
                   {e.extractSource === 'google' && <span className="badge ok">Google</span>}
@@ -94,9 +130,9 @@ export function Journal() {
                   <button className="btn secondary" onClick={() => save(entry)}>
                     Save
                   </button>
-                  {e.status !== 'approved' && (
-                    <button className="btn" onClick={() => approve(entry)}>
-                      Approve
+                  {isDraft && (
+                    <button className="btn" onClick={() => approveAndPost(entry)}>
+                      Approve &amp; post
                     </button>
                   )}
                   <button className="btn danger" onClick={() => deleteEntry(entry.id)}>

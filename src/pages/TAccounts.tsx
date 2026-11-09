@@ -1,4 +1,5 @@
 import { buildGeneralLedger, formatMoney } from '../accounting'
+import { BooksPostingHint } from '../components/BooksPostingHint'
 import { PeriodControls } from '../components/PeriodControls'
 import { useApp } from '../AppContext'
 
@@ -11,10 +12,12 @@ export function TAccounts() {
       <div className="page-head">
         <div>
           <h1>T-Accounts</h1>
-          <p>Classic debit / credit sides for each active account.</p>
+          <p>Classic debit / credit sides for each active account (approved entries only).</p>
         </div>
         <PeriodControls />
       </div>
+
+      <BooksPostingHint compact />
 
       <div className="t-grid">
         {ledger.map((account) => (
@@ -53,7 +56,10 @@ export function TAccounts() {
       </div>
       {!ledger.length && (
         <div className="panel">
-          <p className="muted">No approved activity in this period.</p>
+          <p className="muted">
+            No approved activity in this period. Extract a receipt, then Approve &amp; post in the
+            journal (or widen the period dates above).
+          </p>
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
 import { buildIncomeStatement, formatMoney } from '../accounting'
+import { BooksPostingHint } from '../components/BooksPostingHint'
 import { PeriodControls } from '../components/PeriodControls'
 import { useApp } from '../AppContext'
 
@@ -11,10 +12,12 @@ export function IncomeStatement() {
       <div className="page-head">
         <div>
           <h1>Income Statement</h1>
-          <p>Revenue and expenses for the selected period.</p>
+          <p>Revenue and expenses for the selected period (approved entries only).</p>
         </div>
         <PeriodControls />
       </div>
+
+      <BooksPostingHint compact />
 
       <div className="panel">
         <div className="statement-block">

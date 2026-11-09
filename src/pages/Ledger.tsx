@@ -1,4 +1,5 @@
 import { buildGeneralLedger, formatMoney } from '../accounting'
+import { BooksPostingHint } from '../components/BooksPostingHint'
 import { PeriodControls } from '../components/PeriodControls'
 import { useApp } from '../AppContext'
 
@@ -15,6 +16,8 @@ export function Ledger() {
         </div>
         <PeriodControls />
       </div>
+
+      <BooksPostingHint compact />
 
       <div className="panel">
         {ledger.map((account) => (

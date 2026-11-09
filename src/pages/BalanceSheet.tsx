@@ -1,4 +1,5 @@
 import { buildBalanceSheet, formatMoney } from '../accounting'
+import { BooksPostingHint } from '../components/BooksPostingHint'
 import { PeriodControls } from '../components/PeriodControls'
 import { useApp } from '../AppContext'
 
@@ -45,10 +46,12 @@ export function BalanceSheet() {
       <div className="page-head">
         <div>
           <h1>Balance Sheet</h1>
-          <p>Assets versus liabilities and equity as of the period end.</p>
+          <p>Assets versus liabilities and equity as of the period end (approved entries only).</p>
         </div>
         <PeriodControls />
       </div>
+
+      <BooksPostingHint compact />
 
       <div className="panel">
         <Section title="Assets" rows={sheet.assets.rows} total={sheet.assets.total} />

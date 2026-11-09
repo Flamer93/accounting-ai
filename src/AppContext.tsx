@@ -53,7 +53,8 @@ interface AppState {
   extractDocument: (documentId: string) => Promise<ExtractOutcome>
   deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
-  approveEntry: (entryId: string) => string[]
+  /** Pass `override` when approving unsaved journal editor edits (avoids stale-state race). */
+  approveEntry: (entryId: string, override?: JournalEntry) => string[]
   deleteEntry: (entryId: string) => void
   addManualEntry: () => string
   openaiConfigured: boolean | null
@@ -72,7 +73,8 @@ function entryFromExtract(docId: string, result: ExtractResult): JournalEntry {
   const amount = Number(result.amount) || 0
   const debit = result.debitAccount || '5200'
   const credit = result.creditAccount || '1000'
-  return {
+  const editRequired = Boolean(result.editRequired || result.source === 'mock')
+  const draft: JournalEntry = {
     id: uid('je'),
     date: result.date || new Date().toISOString().slice(0, 10),
     memo: result.memo || '',
@@ -83,7 +85,7 @@ function entryFromExtract(docId: string, result: ExtractResult): JournalEntry {
       { accountCode: credit, debit: 0, credit: amount },
     ],
     status: 'draft',
-    editRequired: result.editRequired || result.source === 'mock',
+    editRequired,
     source: 'extract',
     createdAt: new Date().toISOString(),
     tax: result.tax,
@@ -91,6 +93,13 @@ function entryFromExtract(docId: string, result: ExtractResult): JournalEntry {
     extractSource: result.source,
     extractedFields: result.fields,
   }
+
+  // Auto-post balanced, valid AI extracts so statements update immediately.
+  // Mock / edit-required stays draft until the user Approves & posts in Journal.
+  if (!editRequired && validateEntry(draft).length === 0) {
+    return { ...draft, status: 'approved', editRequired: false }
+  }
+  return draft
 }
 
 export type ExtractOutcome = {
@@ -277,6 +286,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       `$${Number(result.amount).toFixed(2)}`,
       result.vendor,
       result.memo,
+      entry.status === 'approved' ? 'posted to books' : 'draft — Approve & post in Journal',
       result.warning,
     ].filter(Boolean)
 
@@ -287,7 +297,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? {
               ...d,
               extractionStatus: 'extracted',
-              editRequired: entry.editRequired,
+              editRequired: entry.status !== 'approved' && Boolean(entry.editRequired),
               entryIds: [...d.entryIds, entry.id],
               lastExtractSource: result.source,
               lastExtractSummary: summaryParts.join(' · '),
@@ -305,16 +315,33 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return []
   }, [])
 
-  const approveEntry = useCallback((entryId: string) => {
-    const entry = entriesRef.current.find((e) => e.id === entryId)
-    if (!entry) return ['Entry not found']
+  const approveEntry = useCallback((entryId: string, override?: JournalEntry) => {
+    const entry = override ?? entriesRef.current.find((e) => e.id === entryId)
+    if (!entry || entry.id !== entryId) return ['Entry not found']
     const errors = validateEntry(entry)
     if (errors.length) return errors
-    setEntries((prev) =>
-      prev.map((e) =>
-        e.id === entryId ? { ...e, status: 'approved', editRequired: false } : e,
-      ),
-    )
+    const posted: JournalEntry = { ...entry, status: 'approved', editRequired: false }
+    // Keep ref in sync so immediate follow-up reads see the approved entry
+    entriesRef.current = entriesRef.current.map((e) => (e.id === entryId ? posted : e))
+    setEntries((prev) => prev.map((e) => (e.id === entryId ? posted : e)))
+    if (posted.documentId) {
+      const docId = posted.documentId
+      setDocuments((prev) =>
+        prev.map((d) =>
+          d.id === docId
+            ? {
+                ...d,
+                editRequired: false,
+                lastExtractSummary: d.lastExtractSummary?.includes('posted')
+                  ? d.lastExtractSummary
+                  : d.lastExtractSummary
+                    ? `${d.lastExtractSummary} · posted`
+                    : d.lastExtractSummary,
+              }
+            : d,
+        ),
+      )
+    }
     return []
   }, [])
 

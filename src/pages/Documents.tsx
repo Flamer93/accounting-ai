@@ -13,14 +13,23 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function Documents() {
-  const { documents, addDocument, extractDocument, deleteDocument, settings, preferredProvider } =
-    useApp()
+  const {
+    documents,
+    addDocument,
+    extractDocument,
+    deleteDocument,
+    approveEntry,
+    settings,
+    preferredProvider,
+  } = useApp()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const [lastResult, setLastResult] = useState<string | null>(null)
+  const [lastEntryId, setLastEntryId] = useState<string | null>(null)
+  const [lastPosted, setLastPosted] = useState(false)
 
   const activeFields = enabledExtractFields(settings)
 
@@ -71,17 +80,40 @@ export function Documents() {
     setError(null)
     setNotice(null)
     setLastResult(null)
+    setLastEntryId(null)
+    setLastPosted(false)
     try {
       const { entry, warning } = await extractDocument(id)
       const mode = providerLabel(entry.extractSource)
-      const base = `${mode} extract → draft ${entry.vendor || 'entry'} · $${entry.lines[0]?.debit || entry.lines[1]?.credit || 0} · fields: ${(entry.extractedFields || activeFields).join(', ')}`
-      setLastResult(base)
+      const amount = entry.lines[0]?.debit || entry.lines[1]?.credit || 0
+      const posted = entry.status === 'approved'
+      setLastEntryId(entry.id)
+      setLastPosted(posted)
+      setLastResult(
+        posted
+          ? `${mode} extract posted ${entry.vendor || 'entry'} · $${amount} to the books`
+          : `${mode} extract → draft ${entry.vendor || 'entry'} · $${amount} (not on statements until Approve & post)`,
+      )
       if (warning) setNotice(warning)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extract failed')
     } finally {
       setBusyId(null)
     }
+  }
+
+  function onApproveLast() {
+    if (!lastEntryId) return
+    const errs = approveEntry(lastEntryId)
+    if (errs.length) {
+      setError(errs.join(' · '))
+      return
+    }
+    setLastPosted(true)
+    setLastResult((prev) =>
+      prev ? prev.replace('→ draft', 'posted').replace(/ \(not on statements.*\)$/, ' — posted to the books') : prev,
+    )
+    setNotice(null)
   }
 
   function onDrop(e: DragEvent) {
@@ -95,7 +127,10 @@ export function Documents() {
       <div className="page-head">
         <div>
           <h1>Documents</h1>
-          <p>Upload receipt photos, then extract draft journal entries for review.</p>
+          <p>
+            Upload → Extract → Journal <strong>Approve &amp; post</strong> → statements. Balanced AI
+            extracts auto-post; mock extracts stay drafts until you approve.
+          </p>
         </div>
       </div>
 
@@ -153,10 +188,25 @@ export function Documents() {
         </p>
       )}
       {lastResult && (
-        <p className="muted" style={{ marginTop: '0.75rem' }}>
-          <span className="badge ok">Latest extract</span> {lastResult}{' '}
-          <Link to="/journal">Open journal</Link>
-        </p>
+        <div className={`status-banner ${lastPosted ? '' : 'warn-banner'}`} style={{ marginTop: '0.75rem' }}>
+          <span className={`badge ${lastPosted ? 'ok' : 'warn'}`}>
+            {lastPosted ? 'Posted' : 'Needs Approve & post'}
+          </span>
+          <span className="muted">{lastResult}</span>
+          {!lastPosted && lastEntryId && (
+            <button className="btn" type="button" onClick={onApproveLast}>
+              Approve &amp; post
+            </button>
+          )}
+          <Link className="btn secondary" to="/journal">
+            Open journal
+          </Link>
+          {lastPosted && (
+            <Link className="btn ghost" to="/t-accounts">
+              View T-accounts
+            </Link>
+          )}
+        </div>
       )}
 
       <div className="panel" style={{ marginTop: '1.25rem' }}>
@@ -197,7 +247,7 @@ export function Documents() {
                   </button>
                   {doc.entryIds[0] && (
                     <Link className="btn secondary" to="/journal">
-                      Journal
+                      Review / approve
                     </Link>
                   )}
                   <button

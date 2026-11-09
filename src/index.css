@@ -499,6 +499,20 @@ table.ledger th.num {
   animation: rise 0.45s ease both;
 }
 
+.status-banner.warn-banner {
+  background: rgba(176, 120, 36, 0.1);
+  border-color: rgba(176, 120, 36, 0.28);
+}
+
+.entry-editor.entry-draft {
+  background: rgba(176, 120, 36, 0.06);
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid rgba(176, 120, 36, 0.22);
+  border-bottom: 1px solid rgba(176, 120, 36, 0.22);
+  margin-bottom: 0.75rem;
+}
+
 .dropzone {
   border: 1.5px dashed rgba(47, 107, 85, 0.35);
   border-radius: 18px;
