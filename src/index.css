@@ -525,6 +525,47 @@ table.ledger th.num {
   font-size: 0.85rem;
 }
 
+.settings-block h2 {
+  margin: 0 0 0.65rem;
+  font-size: 1.25rem;
+}
+
+.settings-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.settings-row span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.settings-row input[type='checkbox'] {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--leaf);
+}
+
+.settings-row.locked {
+  opacity: 0.92;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

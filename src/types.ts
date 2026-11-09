@@ -25,6 +25,10 @@ export interface JournalEntry {
   editRequired?: boolean
   source: 'seed' | 'extract' | 'manual'
   createdAt: string
+  tax?: number
+  category?: string
+  extractSource?: 'openai' | 'mock'
+  extractedFields?: string[]
 }
 
 export interface DocumentRecord {
@@ -36,17 +40,22 @@ export interface DocumentRecord {
   extractionStatus: 'pending' | 'extracted' | 'failed'
   editRequired?: boolean
   entryIds: string[]
+  lastExtractSource?: 'openai' | 'mock'
+  lastExtractSummary?: string
 }
 
 export interface ExtractResult {
-  date: string
-  vendor: string
+  date?: string
+  vendor?: string
   amount: number
-  debitAccount: string
-  creditAccount: string
-  memo: string
+  debitAccount?: string
+  creditAccount?: string
+  memo?: string
+  tax?: number
+  category?: string
   editRequired: boolean
   source: 'openai' | 'mock'
+  fields: string[]
 }
 
 export interface PeriodFilter {

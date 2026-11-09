@@ -6,9 +6,11 @@ import { useApp } from '../AppContext'
 import type { JournalEntry } from '../types'
 
 export function Journal() {
-  const { entries, period, updateEntry, approveEntry, deleteEntry, addManualEntry } = useApp()
+  const { entries, period, updateEntry, approveEntry, deleteEntry, addManualEntry, settings } =
+    useApp()
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
+  const fields = settings.extractFields
 
   const visible = entries
     .filter((e) => inPeriod(e.date, period))
@@ -83,6 +85,8 @@ export function Journal() {
                     <span className="badge pending">Draft</span>
                   )}
                   {e.editRequired && <span className="badge warn">Edit required</span>}
+                  {e.extractSource === 'openai' && <span className="badge ok">AI</span>}
+                  {e.extractSource === 'mock' && <span className="badge warn">Mock</span>}
                   <span className="muted">{e.source}</span>
                 </div>
                 <div className="cta-row">
@@ -101,85 +105,123 @@ export function Journal() {
               </div>
 
               <div className="fields">
-                <div className="field">
-                  <label>Date</label>
-                  <input
-                    type="date"
-                    value={e.date}
-                    onChange={(ev) => patch(entry, { ...e, date: ev.target.value })}
-                  />
-                </div>
-                <div className="field">
-                  <label>Vendor</label>
-                  <input
-                    value={e.vendor || ''}
-                    onChange={(ev) => patch(entry, { ...e, vendor: ev.target.value })}
-                  />
-                </div>
-                <div className="field" style={{ gridColumn: 'span 2' }}>
-                  <label>Memo</label>
-                  <input
-                    value={e.memo}
-                    onChange={(ev) => patch(entry, { ...e, memo: ev.target.value })}
-                  />
-                </div>
+                {fields.date && (
+                  <div className="field">
+                    <label>Date</label>
+                    <input
+                      type="date"
+                      value={e.date}
+                      onChange={(ev) => patch(entry, { ...e, date: ev.target.value })}
+                    />
+                  </div>
+                )}
+                {fields.vendor && (
+                  <div className="field">
+                    <label>Vendor</label>
+                    <input
+                      value={e.vendor || ''}
+                      onChange={(ev) => patch(entry, { ...e, vendor: ev.target.value })}
+                    />
+                  </div>
+                )}
+                {fields.memo && (
+                  <div className="field" style={{ gridColumn: 'span 2' }}>
+                    <label>Memo</label>
+                    <input
+                      value={e.memo}
+                      onChange={(ev) => patch(entry, { ...e, memo: ev.target.value })}
+                    />
+                  </div>
+                )}
+                {fields.tax && (
+                  <div className="field">
+                    <label>Tax</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={e.tax ?? ''}
+                      onChange={(ev) =>
+                        patch(entry, { ...e, tax: Number(ev.target.value || 0) })
+                      }
+                    />
+                  </div>
+                )}
+                {fields.category && (
+                  <div className="field">
+                    <label>Category</label>
+                    <input
+                      value={e.category || ''}
+                      onChange={(ev) => patch(entry, { ...e, category: ev.target.value })}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="lines">
-                {e.lines.map((line, idx) => (
-                  <div className="line-row" key={`${entry.id}_${idx}`}>
-                    <div className="field">
-                      <label>Account</label>
-                      <select
-                        value={line.accountCode}
-                        onChange={(ev) => {
-                          const lines = e.lines.map((l, i) =>
-                            i === idx ? { ...l, accountCode: ev.target.value } : l,
-                          )
-                          patch(entry, { ...e, lines })
-                        }}
-                      >
-                        {CHART_OF_ACCOUNTS.map((a) => (
-                          <option key={a.code} value={a.code}>
-                            {a.code} · {a.name}
-                          </option>
-                        ))}
-                      </select>
+                {e.lines.map((line, idx) => {
+                  const isDebitLine = (line.debit || 0) > 0 || (idx === 0 && (line.credit || 0) === 0)
+                  const showAccount =
+                    (isDebitLine && fields.debitAccount) || (!isDebitLine && fields.creditAccount)
+                  return (
+                    <div className="line-row" key={`${entry.id}_${idx}`}>
+                      <div className="field">
+                        <label>{isDebitLine ? 'Debit account' : 'Credit account'}</label>
+                        {showAccount ? (
+                          <select
+                            value={line.accountCode}
+                            onChange={(ev) => {
+                              const lines = e.lines.map((l, i) =>
+                                i === idx ? { ...l, accountCode: ev.target.value } : l,
+                              )
+                              patch(entry, { ...e, lines })
+                            }}
+                          >
+                            {CHART_OF_ACCOUNTS.map((a) => (
+                              <option key={a.code} value={a.code}>
+                                {a.code} · {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input value={line.accountCode} readOnly />
+                        )}
+                      </div>
+                      <div className="field">
+                        <label>Debit</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.debit || ''}
+                          onChange={(ev) => {
+                            const debit = Number(ev.target.value || 0)
+                            const lines = e.lines.map((l, i) =>
+                              i === idx ? { ...l, debit, credit: debit ? 0 : l.credit } : l,
+                            )
+                            patch(entry, { ...e, lines })
+                          }}
+                        />
+                      </div>
+                      <div className="field">
+                        <label>Credit</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={line.credit || ''}
+                          onChange={(ev) => {
+                            const credit = Number(ev.target.value || 0)
+                            const lines = e.lines.map((l, i) =>
+                              i === idx ? { ...l, credit, debit: credit ? 0 : l.debit } : l,
+                            )
+                            patch(entry, { ...e, lines })
+                          }}
+                        />
+                      </div>
                     </div>
-                    <div className="field">
-                      <label>Debit</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.debit || ''}
-                        onChange={(ev) => {
-                          const debit = Number(ev.target.value || 0)
-                          const lines = e.lines.map((l, i) =>
-                            i === idx ? { ...l, debit, credit: debit ? 0 : l.credit } : l,
-                          )
-                          patch(entry, { ...e, lines })
-                        }}
-                      />
-                    </div>
-                    <div className="field">
-                      <label>Credit</label>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.credit || ''}
-                        onChange={(ev) => {
-                          const credit = Number(ev.target.value || 0)
-                          const lines = e.lines.map((l, i) =>
-                            i === idx ? { ...l, credit, debit: credit ? 0 : l.debit } : l,
-                          )
-                          patch(entry, { ...e, lines })
-                        }}
-                      />
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               <div className="muted">

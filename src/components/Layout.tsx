@@ -1,18 +1,18 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useApp } from '../AppContext'
-
-const links = [
-  { to: '/documents', label: 'Documents' },
-  { to: '/journal', label: 'Journal' },
-  { to: '/ledger', label: 'Ledger' },
-  { to: '/t-accounts', label: 'T-Accounts' },
-  { to: '/trial-balance', label: 'Trial Balance' },
-  { to: '/balance-sheet', label: 'Balance Sheet' },
-  { to: '/income-statement', label: 'Income Statement' },
-]
+import { NAV_VIEW_META } from '../settings'
 
 export function Layout() {
-  const { openaiConfigured } = useApp()
+  const { openaiConfigured, settings } = useApp()
+
+  const links = [
+    { to: '/documents', label: 'Documents' },
+    ...NAV_VIEW_META.filter((view) => settings.nav[view.key]).map((view) => ({
+      to: view.path,
+      label: view.label,
+    })),
+    { to: '/settings', label: 'Settings' },
+  ]
 
   return (
     <div className="app-shell">
@@ -38,16 +38,19 @@ export function Layout() {
 
       {openaiConfigured === false && (
         <div className="status-banner">
-          <span className="badge warn">Sample / mock extract</span>
+          <span className="badge warn">Mock extract</span>
           <span className="muted">
-            OPENAI_API_KEY is not set. Uploads use a deterministic extractor — review and edit before approving.
+            AI is off — no <code>OPENAI_API_KEY</code> in the host env. Extracts create editable sample drafts.
+            See Settings for field choices and AI status.
           </span>
         </div>
       )}
       {openaiConfigured === true && (
         <div className="status-banner">
-          <span className="badge ok">OpenAI extract ready</span>
-          <span className="muted">Vision extraction will run when you extract a document.</span>
+          <span className="badge ok">AI extract ready</span>
+          <span className="muted">
+            OpenAI vision will run on Extract, using only the fields enabled in Settings.
+          </span>
         </div>
       )}
 

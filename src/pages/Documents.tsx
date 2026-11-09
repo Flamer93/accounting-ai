@@ -1,6 +1,7 @@
 import { useRef, useState, type DragEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
+import { enabledExtractFields } from '../settings'
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -12,11 +13,15 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function Documents() {
-  const { documents, addDocument, extractDocument, deleteDocument } = useApp()
+  const { documents, addDocument, extractDocument, deleteDocument, settings, openaiConfigured } =
+    useApp()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [lastResult, setLastResult] = useState<string | null>(null)
+
+  const activeFields = enabledExtractFields(settings)
 
   function onDelete(docId: string, name: string, entryCount: number) {
     const linked =
@@ -45,8 +50,13 @@ export function Documents() {
   async function onExtract(id: string) {
     setBusyId(id)
     setError(null)
+    setLastResult(null)
     try {
-      await extractDocument(id)
+      const entry = await extractDocument(id)
+      const mode = entry.extractSource === 'openai' ? 'AI' : 'Mock'
+      setLastResult(
+        `${mode} extract → draft ${entry.vendor || 'entry'} · $${entry.lines[0]?.debit || entry.lines[1]?.credit || 0} · fields: ${(entry.extractedFields || activeFields).join(', ')}`,
+      )
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Extract failed')
     } finally {
@@ -67,6 +77,16 @@ export function Documents() {
           <h1>Documents</h1>
           <p>Upload receipt photos, then extract draft journal entries for review.</p>
         </div>
+      </div>
+
+      <div className="status-banner">
+        <span className={`badge ${openaiConfigured ? 'ok' : 'warn'}`}>
+          {openaiConfigured ? 'AI vision' : 'Mock extract'}
+        </span>
+        <span className="muted">
+          Requesting fields: {activeFields.join(', ')}. Change these in{' '}
+          <Link to="/settings">Settings</Link>.
+        </span>
       </div>
 
       <div
@@ -99,6 +119,12 @@ export function Documents() {
       </div>
 
       {error && <p className="error" style={{ marginTop: '0.75rem' }}>{error}</p>}
+      {lastResult && (
+        <p className="muted" style={{ marginTop: '0.75rem' }}>
+          <span className="badge ok">Latest extract</span> {lastResult}{' '}
+          <Link to="/journal">Open journal</Link>
+        </p>
+      )}
 
       <div className="panel" style={{ marginTop: '1.25rem' }}>
         <div className="grid-docs">
@@ -120,13 +146,25 @@ export function Documents() {
                 {doc.extractionStatus === 'extracted' && !doc.editRequired && (
                   <span className="badge ok">Extracted</span>
                 )}
+                {doc.lastExtractSource && (
+                  <span className={`badge ${doc.lastExtractSource === 'openai' ? 'ok' : 'warn'}`}>
+                    {doc.lastExtractSource === 'openai' ? 'AI' : 'Mock'}
+                  </span>
+                )}
+                {doc.lastExtractSummary && <span className="muted">{doc.lastExtractSummary}</span>}
                 <div className="cta-row">
                   <button
                     className="btn"
                     disabled={busyId === doc.id}
                     onClick={() => void onExtract(doc.id)}
                   >
-                    {busyId === doc.id ? 'Extracting…' : 'Extract'}
+                    {busyId === doc.id
+                      ? openaiConfigured
+                        ? 'AI extracting…'
+                        : 'Extracting…'
+                      : openaiConfigured
+                        ? 'Extract with AI'
+                        : 'Extract (mock)'}
                   </button>
                   {doc.entryIds[0] && (
                     <Link className="btn secondary" to="/journal">

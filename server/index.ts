@@ -50,10 +50,20 @@ async function createApp() {
         return
       }
 
+      let fields: unknown = req.body?.fields
+      if (typeof fields === 'string') {
+        try {
+          fields = JSON.parse(fields)
+        } catch {
+          fields = undefined
+        }
+      }
+
       const result = await extractFromUpload({
         filename,
         size: size || dataUrl.length,
         dataUrl,
+        fields,
       })
       res.json(result)
     } catch (err) {

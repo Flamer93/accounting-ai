@@ -11,6 +11,13 @@ import {
 import { validateEntry } from './accounting'
 import { cascadeRemoveDocument } from './documentCascade'
 import {
+  enabledExtractFields,
+  loadSettings,
+  normalizeSettings,
+  saveSettings,
+  type AppSettings,
+} from './settings'
+import {
   loadDocuments,
   loadEntries,
   saveDocuments,
@@ -23,9 +30,11 @@ interface AppState {
   documents: DocumentRecord[]
   entries: JournalEntry[]
   period: PeriodFilter
+  settings: AppSettings
   setPeriod: (period: PeriodFilter) => void
+  updateSettings: (next: AppSettings) => void
   addDocument: (file: File, dataUrl: string) => DocumentRecord
-  extractDocument: (documentId: string) => Promise<void>
+  extractDocument: (documentId: string) => Promise<JournalEntry>
   deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
   approveEntry: (entryId: string) => string[]
@@ -36,14 +45,41 @@ interface AppState {
 
 const Ctx = createContext<AppState | null>(null)
 
+function entryFromExtract(docId: string, result: ExtractResult): JournalEntry {
+  const amount = Number(result.amount) || 0
+  const debit = result.debitAccount || '5200'
+  const credit = result.creditAccount || '1000'
+  return {
+    id: uid('je'),
+    date: result.date || new Date().toISOString().slice(0, 10),
+    memo: result.memo || '',
+    vendor: result.vendor,
+    documentId: docId,
+    lines: [
+      { accountCode: debit, debit: amount, credit: 0 },
+      { accountCode: credit, debit: 0, credit: amount },
+    ],
+    status: 'draft',
+    editRequired: result.editRequired || result.source === 'mock',
+    source: 'extract',
+    createdAt: new Date().toISOString(),
+    tax: result.tax,
+    category: result.category,
+    extractSource: result.source,
+    extractedFields: result.fields,
+  }
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_BOOT_SETTINGS)
   const [period, setPeriod] = useState<PeriodFilter>({ from: '2026-01-01', to: '2026-12-31' })
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
   const [ready, setReady] = useState(false)
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
+  const settingsRef = useRef(settings)
 
   useEffect(() => {
     documentsRef.current = documents
@@ -54,8 +90,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [entries])
 
   useEffect(() => {
+    settingsRef.current = settings
+  }, [settings])
+
+  useEffect(() => {
     setDocuments(loadDocuments())
     setEntries(loadEntries())
+    setSettings(loadSettings())
     setReady(true)
     fetch('/api/health')
       .then((r) => r.json())
@@ -72,6 +113,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!ready) return
     saveEntries(entries)
   }, [entries, ready])
+
+  useEffect(() => {
+    if (!ready) return
+    saveSettings(settings)
+  }, [settings, ready])
+
+  const updateSettings = useCallback((next: AppSettings) => {
+    const normalized = normalizeSettings(next)
+    settingsRef.current = normalized
+    saveSettings(normalized)
+    setSettings(normalized)
+  }, [])
 
   const addDocument = useCallback((file: File, dataUrl: string) => {
     const doc: DocumentRecord = {
@@ -93,10 +146,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const extractDocument = useCallback(async (documentId: string) => {
     const doc =
-      documents.find((d) => d.id === documentId) ||
+      documentsRef.current.find((d) => d.id === documentId) ||
       loadDocuments().find((d) => d.id === documentId)
     if (!doc) throw new Error('Document not found')
 
+    const fields = enabledExtractFields(settingsRef.current)
     const res = await fetch('/api/extract', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -104,6 +158,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         dataUrl: doc.dataUrl,
         filename: doc.name,
         size: doc.dataUrl.length,
+        fields,
       }),
     })
     if (!res.ok) {
@@ -114,22 +169,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       throw new Error((err as { error?: string }).error || 'Extract failed')
     }
     const result = (await res.json()) as ExtractResult
-
-    const entry: JournalEntry = {
-      id: uid('je'),
-      date: result.date,
-      memo: result.memo,
-      vendor: result.vendor,
-      documentId: doc.id,
-      lines: [
-        { accountCode: result.debitAccount, debit: result.amount, credit: 0 },
-        { accountCode: result.creditAccount, debit: 0, credit: result.amount },
-      ],
-      status: 'draft',
-      editRequired: result.editRequired || result.source === 'mock',
-      source: 'extract',
-      createdAt: new Date().toISOString(),
-    }
+    const entry = entryFromExtract(doc.id, result)
+    const summaryParts = [
+      result.source === 'openai' ? 'AI extract' : 'Mock extract',
+      `$${Number(result.amount).toFixed(2)}`,
+      result.vendor,
+      result.memo,
+    ].filter(Boolean)
 
     setEntries((prev) => [entry, ...prev])
     setDocuments((prev) =>
@@ -140,11 +186,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
               extractionStatus: 'extracted',
               editRequired: entry.editRequired,
               entryIds: [...d.entryIds, entry.id],
+              lastExtractSource: result.source,
+              lastExtractSummary: summaryParts.join(' · '),
             }
           : d,
       ),
     )
-  }, [documents])
+    return entry
+  }, [])
 
   const updateEntry = useCallback((entry: JournalEntry) => {
     const errors = validateEntry(entry)
@@ -154,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const approveEntry = useCallback((entryId: string) => {
-    const entry = entries.find((e) => e.id === entryId)
+    const entry = entriesRef.current.find((e) => e.id === entryId)
     if (!entry) return ['Entry not found']
     const errors = validateEntry(entry)
     if (errors.length) return errors
@@ -164,7 +213,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       ),
     )
     return []
-  }, [entries])
+  }, [])
 
   const deleteEntry = useCallback((entryId: string) => {
     setEntries((prev) => prev.filter((e) => e.id !== entryId))
@@ -185,6 +234,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const addManualEntry = useCallback(() => {
     const id = uid('je')
+    const fields = settingsRef.current.extractFields
     const entry: JournalEntry = {
       id,
       date: new Date().toISOString().slice(0, 10),
@@ -197,6 +247,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       editRequired: true,
       source: 'manual',
       createdAt: new Date().toISOString(),
+      tax: fields.tax ? 0 : undefined,
+      category: fields.category ? '' : undefined,
+      extractedFields: enabledExtractFields(settingsRef.current),
     }
     setEntries((prev) => [entry, ...prev])
     return id
@@ -207,7 +260,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       documents,
       entries,
       period,
+      settings,
       setPeriod,
+      updateSettings,
       addDocument,
       extractDocument,
       deleteDocument,
@@ -221,6 +276,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       documents,
       entries,
       period,
+      settings,
+      updateSettings,
       addDocument,
       extractDocument,
       deleteDocument,
@@ -234,6 +291,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
+
+const DEFAULT_BOOT_SETTINGS = normalizeSettings(null)
 
 export function useApp(): AppState {
   const ctx = useContext(Ctx)
