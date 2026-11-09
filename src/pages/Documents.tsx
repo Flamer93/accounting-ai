@@ -13,7 +13,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function Documents() {
-  const { documents, addDocument, extractDocument, deleteDocument, settings, openaiConfigured } =
+  const { documents, addDocument, extractDocument, deleteDocument, settings, preferredProvider } =
     useApp()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
@@ -22,6 +22,24 @@ export function Documents() {
   const [lastResult, setLastResult] = useState<string | null>(null)
 
   const activeFields = enabledExtractFields(settings)
+
+  function providerLabel(source?: string) {
+    if (source === 'google') return 'Google'
+    if (source === 'openai') return 'OpenAI'
+    if (source === 'mock') return 'Mock'
+    return 'Extract'
+  }
+
+  function extractButtonLabel(busy: boolean) {
+    if (busy) {
+      if (preferredProvider === 'google') return 'Google extracting…'
+      if (preferredProvider === 'openai') return 'OpenAI extracting…'
+      return 'Extracting…'
+    }
+    if (preferredProvider === 'google') return 'Extract with Google'
+    if (preferredProvider === 'openai') return 'Extract with OpenAI'
+    return 'Extract (mock)'
+  }
 
   function onDelete(docId: string, name: string, entryCount: number) {
     const linked =
@@ -53,7 +71,7 @@ export function Documents() {
     setLastResult(null)
     try {
       const entry = await extractDocument(id)
-      const mode = entry.extractSource === 'openai' ? 'AI' : 'Mock'
+      const mode = providerLabel(entry.extractSource)
       setLastResult(
         `${mode} extract → draft ${entry.vendor || 'entry'} · $${entry.lines[0]?.debit || entry.lines[1]?.credit || 0} · fields: ${(entry.extractedFields || activeFields).join(', ')}`,
       )
@@ -80,11 +98,15 @@ export function Documents() {
       </div>
 
       <div className="status-banner">
-        <span className={`badge ${openaiConfigured ? 'ok' : 'warn'}`}>
-          {openaiConfigured ? 'AI vision' : 'Mock extract'}
+        <span className={`badge ${preferredProvider === 'mock' || !preferredProvider ? 'warn' : 'ok'}`}>
+          {preferredProvider === 'google'
+            ? 'Google'
+            : preferredProvider === 'openai'
+              ? 'OpenAI'
+              : 'Mock extract'}
         </span>
         <span className="muted">
-          Requesting fields: {activeFields.join(', ')}. Change these in{' '}
+          Requesting fields: {activeFields.join(', ')}. Provider & fields in{' '}
           <Link to="/settings">Settings</Link>.
         </span>
       </div>
@@ -147,8 +169,10 @@ export function Documents() {
                   <span className="badge ok">Extracted</span>
                 )}
                 {doc.lastExtractSource && (
-                  <span className={`badge ${doc.lastExtractSource === 'openai' ? 'ok' : 'warn'}`}>
-                    {doc.lastExtractSource === 'openai' ? 'AI' : 'Mock'}
+                  <span
+                    className={`badge ${doc.lastExtractSource === 'mock' ? 'warn' : 'ok'}`}
+                  >
+                    {providerLabel(doc.lastExtractSource)}
                   </span>
                 )}
                 {doc.lastExtractSummary && <span className="muted">{doc.lastExtractSummary}</span>}
@@ -158,13 +182,7 @@ export function Documents() {
                     disabled={busyId === doc.id}
                     onClick={() => void onExtract(doc.id)}
                   >
-                    {busyId === doc.id
-                      ? openaiConfigured
-                        ? 'AI extracting…'
-                        : 'Extracting…'
-                      : openaiConfigured
-                        ? 'Extract with AI'
-                        : 'Extract (mock)'}
+                    {extractButtonLabel(busyId === doc.id)}
                   </button>
                   {doc.entryIds[0] && (
                     <Link className="btn secondary" to="/journal">

@@ -3,7 +3,7 @@ import { useApp } from '../AppContext'
 import { NAV_VIEW_META } from '../settings'
 
 export function Layout() {
-  const { openaiConfigured, settings } = useApp()
+  const { settings, preferredProvider } = useApp()
 
   const links = [
     { to: '/documents', label: 'Documents' },
@@ -36,20 +36,28 @@ export function Layout() {
         </nav>
       </header>
 
-      {openaiConfigured === false && (
+      {preferredProvider === 'google' && (
         <div className="status-banner">
-          <span className="badge warn">Mock extract</span>
+          <span className="badge ok">Google extract</span>
           <span className="muted">
-            AI is off — no <code>OPENAI_API_KEY</code> in the host env. Extracts create editable sample drafts.
-            See Settings for field choices and AI status.
+            Gemini will run on Extract using your browser-saved Google API key and Settings fields.
           </span>
         </div>
       )}
-      {openaiConfigured === true && (
+      {preferredProvider === 'openai' && (
         <div className="status-banner">
-          <span className="badge ok">AI extract ready</span>
+          <span className="badge ok">OpenAI extract</span>
           <span className="muted">
-            OpenAI vision will run on Extract, using only the fields enabled in Settings.
+            No Google key saved — host OpenAI vision will run on Extract. Add a Google API key in Settings
+            to prefer Gemini.
+          </span>
+        </div>
+      )}
+      {preferredProvider === 'mock' && (
+        <div className="status-banner">
+          <span className="badge warn">Mock extract</span>
+          <span className="muted">
+            No Google key in Settings and no host OpenAI key. Extracts create editable sample drafts.
           </span>
         </div>
       )}

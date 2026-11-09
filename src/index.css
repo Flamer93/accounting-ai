@@ -566,6 +566,17 @@ code {
   font-size: 0.86em;
 }
 
+.google-key-form {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.google-key-form .field input {
+  width: 100%;
+  max-width: 28rem;
+}
+
 @keyframes rise {
   from {
     opacity: 0;

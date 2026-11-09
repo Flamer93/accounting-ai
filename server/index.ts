@@ -25,10 +25,13 @@ async function createApp() {
   app.use(cors())
   app.use(express.json({ limit: '10mb' }))
 
-  app.get('/api/health', (_req, res) => {
+  app.get('/api/health', (req, res) => {
+    const headerKey = String(req.header('x-google-api-key') || '').trim()
     res.json({
       ok: true,
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      googleKeyPresent: Boolean(headerKey),
+      extractPriority: ['google (request key)', 'openai (host env)', 'mock'],
     })
   })
 
@@ -59,18 +62,21 @@ async function createApp() {
         }
       }
 
+      // Request-scoped only — never log or persist
+      const googleApiKey = String(req.header('x-google-api-key') || req.body?.googleApiKey || '').trim()
+
       const result = await extractFromUpload({
         filename,
         size: size || dataUrl.length,
         dataUrl,
         fields,
+        googleApiKey: googleApiKey || undefined,
       })
       res.json(result)
     } catch (err) {
-      console.error(err)
-      res.status(500).json({
-        error: err instanceof Error ? err.message : 'Extract failed',
-      })
+      const message = err instanceof Error ? err.message : 'Extract failed'
+      console.error('Extract failed:', message)
+      res.status(500).json({ error: message })
     }
   })
 
@@ -120,8 +126,8 @@ createApp()
       console.log(`Receipt Ledger listening on http://127.0.0.1:${port}`)
       console.log(
         process.env.OPENAI_API_KEY
-          ? 'OpenAI extraction enabled'
-          : 'OPENAI_API_KEY unset — using mock extractor',
+          ? 'Host OpenAI extraction available; Google key may be sent per request'
+          : 'OPENAI_API_KEY unset — Google request key or mock extractor',
       )
     })
   })

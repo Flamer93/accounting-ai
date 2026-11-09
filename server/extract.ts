@@ -8,6 +8,8 @@ export type ExtractFieldKey =
   | 'tax'
   | 'category'
 
+export type ExtractSource = 'google' | 'openai' | 'mock'
+
 export interface ExtractPayload {
   date?: string
   vendor?: string
@@ -18,7 +20,7 @@ export interface ExtractPayload {
   tax?: number
   category?: string
   editRequired: boolean
-  source: 'openai' | 'mock'
+  source: ExtractSource
   fields: ExtractFieldKey[]
 }
 
@@ -131,12 +133,93 @@ function fieldPrompt(fields: ExtractFieldKey[]): string {
   return fields.map((f) => specs[f]).join(', ')
 }
 
+function parseExtractJson(content: string): Partial<ExtractPayload> {
+  const trimmed = content.trim()
+  const fenced = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(trimmed)
+  const raw = fenced ? fenced[1].trim() : trimmed
+  return JSON.parse(raw) as Partial<ExtractPayload>
+}
+
+function toPayload(
+  parsed: Partial<ExtractPayload>,
+  fields: ExtractFieldKey[],
+  source: ExtractSource,
+  editRequired: boolean,
+): ExtractPayload {
+  const amount = Number(parsed.amount)
+  if (!Number.isFinite(amount)) {
+    throw new Error('Incomplete extraction JSON: amount required')
+  }
+  const taxNum = parsed.tax === undefined || parsed.tax === null ? undefined : Number(parsed.tax)
+  return pickFields(
+    {
+      date: parsed.date ? String(parsed.date) : new Date().toISOString().slice(0, 10),
+      vendor: parsed.vendor ? String(parsed.vendor) : 'Unknown vendor',
+      amount,
+      debitAccount: String(parsed.debitAccount || '5200'),
+      creditAccount: String(parsed.creditAccount || '1000'),
+      memo: parsed.memo ? String(parsed.memo) : 'Receipt purchase',
+      tax: taxNum !== undefined && Number.isFinite(taxNum) ? taxNum : 0,
+      category: parsed.category ? String(parsed.category) : 'General',
+      editRequired,
+      source,
+    },
+    fields,
+  )
+}
+
+export async function googleExtract(
+  dataUrl: string,
+  filename: string,
+  fields: ExtractFieldKey[],
+  apiKey: string,
+): Promise<ExtractPayload> {
+  if (!apiKey.trim()) throw new Error('Google API key is empty')
+
+  const { mime, base64 } = stripDataUrl(dataUrl)
+  const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${encodeURIComponent(apiKey)}`
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: mime, data: base64 } },
+          ],
+        },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.1,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const text = await response.text()
+    // Never include the API key in error text
+    throw new Error(`Google Gemini error ${response.status}: ${text.slice(0, 200)}`)
+  }
+
+  const json = (await response.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+  }
+  const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+  if (!content) throw new Error('Empty Google Gemini response')
+
+  return toPayload(parseExtractJson(content), fields, 'google', false)
+}
+
 export async function openaiExtract(
   dataUrl: string,
   filename: string,
   fields: ExtractFieldKey[],
+  apiKey = process.env.OPENAI_API_KEY || '',
 ): Promise<ExtractPayload> {
-  const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) {
     throw new Error('OPENAI_API_KEY is not set')
   }
@@ -187,29 +270,7 @@ export async function openaiExtract(
   const content = json.choices?.[0]?.message?.content
   if (!content) throw new Error('Empty OpenAI response')
 
-  const parsed = JSON.parse(content) as Partial<ExtractPayload>
-  const amount = Number(parsed.amount)
-  if (!Number.isFinite(amount)) {
-    throw new Error('Incomplete extraction JSON: amount required')
-  }
-
-  const taxNum = parsed.tax === undefined || parsed.tax === null ? undefined : Number(parsed.tax)
-
-  return pickFields(
-    {
-      date: parsed.date ? String(parsed.date) : new Date().toISOString().slice(0, 10),
-      vendor: parsed.vendor ? String(parsed.vendor) : 'Unknown vendor',
-      amount,
-      debitAccount: String(parsed.debitAccount || '5200'),
-      creditAccount: String(parsed.creditAccount || '1000'),
-      memo: parsed.memo ? String(parsed.memo) : 'Receipt purchase',
-      tax: taxNum !== undefined && Number.isFinite(taxNum) ? taxNum : 0,
-      category: parsed.category ? String(parsed.category) : 'General',
-      editRequired: false,
-      source: 'openai',
-    },
-    fields,
-  )
+  return toPayload(JSON.parse(content) as Partial<ExtractPayload>, fields, 'openai', false)
 }
 
 export async function extractFromUpload(opts: {
@@ -217,15 +278,30 @@ export async function extractFromUpload(opts: {
   size: number
   dataUrl: string
   fields?: unknown
+  googleApiKey?: string
 }): Promise<ExtractPayload> {
   const fields = normalizeFields(opts.fields)
+  const googleKey = opts.googleApiKey?.trim() || ''
+
+  if (googleKey) {
+    try {
+      return await googleExtract(opts.dataUrl, opts.filename, fields, googleKey)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google extract failed'
+      console.error('Google extract failed, trying fallback:', message)
+      // fall through to OpenAI / mock
+    }
+  }
+
   if (process.env.OPENAI_API_KEY) {
     try {
       return await openaiExtract(opts.dataUrl, opts.filename, fields)
     } catch (err) {
-      console.error('OpenAI extract failed, falling back to mock:', err)
+      const message = err instanceof Error ? err.message : 'OpenAI extract failed'
+      console.error('OpenAI extract failed, falling back to mock:', message)
       return mockExtract(opts.filename, opts.size, fields)
     }
   }
+
   return mockExtract(opts.filename, opts.size, fields)
 }

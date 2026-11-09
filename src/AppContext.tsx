@@ -11,6 +11,12 @@ import {
 import { validateEntry } from './accounting'
 import { cascadeRemoveDocument } from './documentCascade'
 import {
+  clearGoogleApiKey,
+  hasGoogleApiKey,
+  loadGoogleApiKey,
+  saveGoogleApiKey,
+} from './googleKey'
+import {
   enabledExtractFields,
   loadSettings,
   normalizeSettings,
@@ -25,6 +31,8 @@ import {
   uid,
 } from './storage'
 import type { DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
+
+export type ExtractProvider = 'google' | 'openai' | 'mock' | null
 
 interface AppState {
   documents: DocumentRecord[]
@@ -41,6 +49,10 @@ interface AppState {
   deleteEntry: (entryId: string) => void
   addManualEntry: () => string
   openaiConfigured: boolean | null
+  googleKeySaved: boolean
+  saveGoogleKey: (key: string) => void
+  removeGoogleKey: () => void
+  preferredProvider: ExtractProvider
 }
 
 const Ctx = createContext<AppState | null>(null)
@@ -76,6 +88,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_BOOT_SETTINGS)
   const [period, setPeriod] = useState<PeriodFilter>({ from: '2026-01-01', to: '2026-12-31' })
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
+  const [googleKeySaved, setGoogleKeySaved] = useState(false)
   const [ready, setReady] = useState(false)
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
@@ -97,8 +110,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setDocuments(loadDocuments())
     setEntries(loadEntries())
     setSettings(loadSettings())
+    setGoogleKeySaved(hasGoogleApiKey())
     setReady(true)
-    fetch('/api/health')
+    const headers: HeadersInit = {}
+    const googleKey = loadGoogleApiKey()
+    if (googleKey) headers['X-Google-Api-Key'] = googleKey
+    fetch('/api/health', { headers })
       .then((r) => r.json())
       .then((j: { openaiConfigured?: boolean }) => setOpenaiConfigured(Boolean(j.openaiConfigured)))
       .catch(() => setOpenaiConfigured(false))
@@ -126,6 +143,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSettings(normalized)
   }, [])
 
+  const saveGoogleKey = useCallback((key: string) => {
+    saveGoogleApiKey(key)
+    setGoogleKeySaved(hasGoogleApiKey())
+  }, [])
+
+  const removeGoogleKey = useCallback(() => {
+    clearGoogleApiKey()
+    setGoogleKeySaved(false)
+  }, [])
+
+  const preferredProvider: ExtractProvider = googleKeySaved
+    ? 'google'
+    : openaiConfigured
+      ? 'openai'
+      : openaiConfigured === null
+        ? null
+        : 'mock'
+
   const addDocument = useCallback((file: File, dataUrl: string) => {
     const doc: DocumentRecord = {
       id: uid('doc'),
@@ -151,9 +186,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!doc) throw new Error('Document not found')
 
     const fields = enabledExtractFields(settingsRef.current)
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    const googleKey = loadGoogleApiKey()
+    if (googleKey) headers['X-Google-Api-Key'] = googleKey
+
     const res = await fetch('/api/extract', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({
         dataUrl: doc.dataUrl,
         filename: doc.name,
@@ -170,8 +209,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     const result = (await res.json()) as ExtractResult
     const entry = entryFromExtract(doc.id, result)
+    const sourceLabel =
+      result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
     const summaryParts = [
-      result.source === 'openai' ? 'AI extract' : 'Mock extract',
+      sourceLabel,
       `$${Number(result.amount).toFixed(2)}`,
       result.vendor,
       result.memo,
@@ -271,6 +312,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteEntry,
       addManualEntry,
       openaiConfigured,
+      googleKeySaved,
+      saveGoogleKey,
+      removeGoogleKey,
+      preferredProvider,
     }),
     [
       documents,
@@ -286,6 +331,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteEntry,
       addManualEntry,
       openaiConfigured,
+      googleKeySaved,
+      saveGoogleKey,
+      removeGoogleKey,
+      preferredProvider,
     ],
   )
 

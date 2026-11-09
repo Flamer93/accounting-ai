@@ -27,7 +27,7 @@ export interface JournalEntry {
   createdAt: string
   tax?: number
   category?: string
-  extractSource?: 'openai' | 'mock'
+  extractSource?: 'google' | 'openai' | 'mock'
   extractedFields?: string[]
 }
 
@@ -40,7 +40,7 @@ export interface DocumentRecord {
   extractionStatus: 'pending' | 'extracted' | 'failed'
   editRequired?: boolean
   entryIds: string[]
-  lastExtractSource?: 'openai' | 'mock'
+  lastExtractSource?: 'google' | 'openai' | 'mock'
   lastExtractSummary?: string
 }
 
@@ -54,7 +54,7 @@ export interface ExtractResult {
   tax?: number
   category?: string
   editRequired: boolean
-  source: 'openai' | 'mock'
+  source: 'google' | 'openai' | 'mock'
   fields: string[]
 }
 

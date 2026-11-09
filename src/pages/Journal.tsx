@@ -85,7 +85,8 @@ export function Journal() {
                     <span className="badge pending">Draft</span>
                   )}
                   {e.editRequired && <span className="badge warn">Edit required</span>}
-                  {e.extractSource === 'openai' && <span className="badge ok">AI</span>}
+                  {e.extractSource === 'google' && <span className="badge ok">Google</span>}
+                  {e.extractSource === 'openai' && <span className="badge ok">OpenAI</span>}
                   {e.extractSource === 'mock' && <span className="badge warn">Mock</span>}
                   <span className="muted">{e.source}</span>
                 </div>
