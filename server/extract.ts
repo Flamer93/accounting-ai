@@ -208,36 +208,82 @@ function sanitizeProviderError(text: string): string {
     .slice(0, 240)
 }
 
+const GEMINI_ATTEMPT_TIMEOUT_MS = 25_000
+const GEMINI_TOTAL_BUDGET_MS = 55_000
+const GEMINI_RETRYABLE = new Set([429, 503])
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 async function callGeminiModel(
   model: string,
   apiKey: string,
   mime: string,
   base64: string,
   prompt: string,
+  deadlineMs: number,
 ): Promise<Response> {
   // Prefer header auth so the key never appears in the request URL
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-  return fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents: [
-        {
-          parts: [
-            { text: prompt },
-            { inline_data: { mime_type: mime, data: base64 } },
-          ],
-        },
-      ],
-      generationConfig: {
-        responseMimeType: 'application/json',
-        temperature: 0.1,
+  const body = JSON.stringify({
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: mime, data: base64 } },
+        ],
       },
-    }),
+    ],
+    generationConfig: {
+      responseMimeType: 'application/json',
+      temperature: 0.1,
+    },
   })
+
+  let lastStatusError = `Google Gemini request failed (${model})`
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const remaining = deadlineMs - Date.now()
+    if (remaining <= 0) {
+      throw new Error(`Google Gemini timed out after ${GEMINI_TOTAL_BUDGET_MS / 1000}s total budget`)
+    }
+    const attemptTimeout = Math.min(GEMINI_ATTEMPT_TIMEOUT_MS, remaining)
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), attemptTimeout)
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
+        body,
+        signal: controller.signal,
+      })
+      if (GEMINI_RETRYABLE.has(response.status)) {
+        const text = sanitizeProviderError(await response.text())
+        lastStatusError = `Google Gemini error ${response.status} (${model}): ${text}`
+        const backoff = 500 * 3 ** attempt
+        await sleep(Math.min(backoff, Math.max(0, deadlineMs - Date.now())))
+        continue
+      }
+      return response
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error(
+          `Google Gemini timed out after ${Math.round(attemptTimeout / 1000)}s (${model}). Try a smaller JPEG/PNG or retry.`,
+        )
+      }
+      const message = err instanceof Error ? err.message : 'Google Gemini network error'
+      // Upstream network blips — brief retry
+      lastStatusError = `Google Gemini network error (${model}): ${sanitizeProviderError(message)}`
+      const backoff = 500 * 3 ** attempt
+      await sleep(Math.min(backoff, Math.max(0, deadlineMs - Date.now())))
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw new Error(lastStatusError)
 }
 
 export async function googleExtract(
@@ -257,34 +303,55 @@ export async function googleExtract(
   }
 
   const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
+  const deadlineMs = Date.now() + GEMINI_TOTAL_BUDGET_MS
 
   let lastError = 'Google Gemini request failed'
   for (const model of GEMINI_MODEL_FALLBACKS) {
-    const response = await callGeminiModel(model, apiKey, normalizedMime, base64, prompt)
-    if (!response.ok) {
-      const text = sanitizeProviderError(await response.text())
-      lastError = `Google Gemini error ${response.status} (${model}): ${text}`
-      // Only walk the fallback list for missing/retired model ids
-      if (response.status === 404) continue
-      throw new Error(lastError)
+    if (Date.now() >= deadlineMs) {
+      throw new Error(`Google Gemini timed out after ${GEMINI_TOTAL_BUDGET_MS / 1000}s total budget`)
     }
+    try {
+      const response = await callGeminiModel(
+        model,
+        apiKey,
+        normalizedMime,
+        base64,
+        prompt,
+        deadlineMs,
+      )
+      if (!response.ok) {
+        const text = sanitizeProviderError(await response.text())
+        lastError = `Google Gemini error ${response.status} (${model}): ${text}`
+        // Only walk the fallback list for missing/retired model ids
+        if (response.status === 404) continue
+        throw new Error(lastError)
+      }
 
-    const json = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
-      error?: { message?: string }
+      const json = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+        error?: { message?: string }
+      }
+      if (json.error?.message) {
+        lastError = `Google Gemini error (${model}): ${sanitizeProviderError(json.error.message)}`
+        if (/not found|not supported/i.test(json.error.message)) continue
+        throw new Error(lastError)
+      }
+      const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+      if (!content) {
+        lastError = `Empty Google Gemini response (${model})`
+        continue
+      }
+      const payload = toPayload(parseExtractJson(content), fields, 'google', false)
+      return { ...payload, model }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google Gemini request failed'
+      lastError = message
+      // Model-not-found style messages can continue; timeouts / hard errors stop the chain
+      if (/error 404|\(404\)|not found/i.test(message) && !/timed out/i.test(message)) {
+        continue
+      }
+      throw err instanceof Error ? err : new Error(message)
     }
-    if (json.error?.message) {
-      lastError = `Google Gemini error (${model}): ${sanitizeProviderError(json.error.message)}`
-      if (/not found|not supported/i.test(json.error.message)) continue
-      throw new Error(lastError)
-    }
-    const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
-    if (!content) {
-      lastError = `Empty Google Gemini response (${model})`
-      continue
-    }
-    const payload = toPayload(parseExtractJson(content), fields, 'google', false)
-    return { ...payload, model }
   }
 
   throw new Error(lastError)

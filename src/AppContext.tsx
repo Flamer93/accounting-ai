@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react'
 import { validateEntry } from './accounting'
+import { apiFetch } from './apiClient'
 import { cascadeRemoveDocument } from './documentCascade'
 import {
   clearGoogleApiKey,
@@ -120,7 +121,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const headers: HeadersInit = {}
     const googleKey = loadGoogleApiKey()
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
-    fetch('/api/health', { headers })
+    apiFetch('/api/health', { headers }, 10_000)
       .then((r) => r.json())
       .then((j: { openaiConfigured?: boolean }) => setOpenaiConfigured(Boolean(j.openaiConfigured)))
       .catch(() => setOpenaiConfigured(false))
@@ -196,23 +197,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Send via header and body so a proxy that strips custom headers still works
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
 
-    const res = await fetch('/api/extract', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        dataUrl: doc.dataUrl,
-        filename: doc.name,
-        size: doc.dataUrl.length,
-        fields,
-        ...(googleKey ? { googleApiKey: googleKey } : {}),
-      }),
-    })
+    let res: Response
+    try {
+      res = await apiFetch('/api/extract', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          dataUrl: doc.dataUrl,
+          filename: doc.name,
+          size: doc.dataUrl.length,
+          fields,
+          ...(googleKey ? { googleApiKey: googleKey } : {}),
+        }),
+      })
+    } catch (err) {
+      setDocuments((prev) =>
+        prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
+      )
+      throw err
+    }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       setDocuments((prev) =>
         prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
       )
-      throw new Error((err as { error?: string }).error || 'Extract failed')
+      throw new Error((err as { error?: string }).error || `Extract failed (HTTP ${res.status})`)
     }
     const result = (await res.json()) as ExtractResult
     if (googleKey && result.source === 'mock') {

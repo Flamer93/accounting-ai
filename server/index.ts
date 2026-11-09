@@ -20,10 +20,34 @@ const upload = multer({
   },
 })
 
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${Math.round(ms / 1000)}s`))
+    }, ms)
+    promise.then(
+      (value) => {
+        clearTimeout(timer)
+        resolve(value)
+      },
+      (err) => {
+        clearTimeout(timer)
+        reject(err)
+      },
+    )
+  })
+}
+
 async function createApp() {
   const app = express()
-  app.use(cors())
-  app.use(express.json({ limit: '10mb' }))
+  app.use(
+    cors({
+      origin: true,
+      allowedHeaders: ['Content-Type', 'X-Google-Api-Key'],
+    }),
+  )
+  // Receipt dataUrls (JPEG/PNG) can be several MB when JSON-wrapped
+  app.use(express.json({ limit: '20mb' }))
 
   app.get('/api/health', (req, res) => {
     const headerKey = String(req.header('x-google-api-key') || '').trim()
@@ -65,18 +89,23 @@ async function createApp() {
       // Request-scoped only — never log or persist
       const googleApiKey = String(req.header('x-google-api-key') || req.body?.googleApiKey || '').trim()
 
-      const result = await extractFromUpload({
-        filename,
-        size: size || dataUrl.length,
-        dataUrl,
-        fields,
-        googleApiKey: googleApiKey || undefined,
-      })
+      const result = await withTimeout(
+        extractFromUpload({
+          filename,
+          size: size || dataUrl.length,
+          dataUrl,
+          fields,
+          googleApiKey: googleApiKey || undefined,
+        }),
+        60_000,
+        'Extract',
+      )
       res.json(result)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Extract failed'
       console.error('Extract failed:', message)
-      res.status(500).json({ error: message })
+      const timedOut = /timed out/i.test(message)
+      res.status(timedOut ? 504 : 500).json({ error: message })
     }
   })
 
@@ -122,7 +151,7 @@ async function createApp() {
 
 createApp()
   .then((app) => {
-    app.listen(port, '0.0.0.0', () => {
+    const server = app.listen(port, '0.0.0.0', () => {
       console.log(`Receipt Ledger listening on http://127.0.0.1:${port}`)
       console.log(
         process.env.OPENAI_API_KEY
@@ -130,6 +159,10 @@ createApp()
           : 'OPENAI_API_KEY unset — Google request key or mock extractor',
       )
     })
+    // Keep sockets alive long enough for Gemini retries, but don't hang forever
+    server.requestTimeout = 70_000
+    server.headersTimeout = 75_000
+    server.keepAliveTimeout = 10_000
   })
   .catch((err) => {
     console.error(err)
