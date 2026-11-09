@@ -12,11 +12,20 @@ function readFileAsDataUrl(file: File): Promise<string> {
 }
 
 export function Documents() {
-  const { documents, addDocument, extractDocument } = useApp()
+  const { documents, addDocument, extractDocument, deleteDocument } = useApp()
   const inputRef = useRef<HTMLInputElement>(null)
   const [dragging, setDragging] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  function onDelete(docId: string, name: string, entryCount: number) {
+    const linked =
+      entryCount > 0
+        ? ` This also removes ${entryCount} linked journal entr${entryCount === 1 ? 'y' : 'ies'} from the books (journal, ledger, and statements).`
+        : ''
+    if (!window.confirm(`Delete “${name}”?${linked}`)) return
+    deleteDocument(docId)
+  }
 
   async function handleFiles(files: FileList | File[]) {
     setError(null)
@@ -124,6 +133,13 @@ export function Documents() {
                       Journal
                     </Link>
                   )}
+                  <button
+                    className="btn danger"
+                    disabled={busyId === doc.id}
+                    onClick={() => onDelete(doc.id, doc.name, doc.entryIds.length)}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             </article>

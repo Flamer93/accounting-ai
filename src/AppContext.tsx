@@ -4,10 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { validateEntry } from './accounting'
+import { cascadeRemoveDocument } from './documentCascade'
 import {
   loadDocuments,
   loadEntries,
@@ -24,6 +26,7 @@ interface AppState {
   setPeriod: (period: PeriodFilter) => void
   addDocument: (file: File, dataUrl: string) => DocumentRecord
   extractDocument: (documentId: string) => Promise<void>
+  deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
   approveEntry: (entryId: string) => string[]
   deleteEntry: (entryId: string) => void
@@ -39,6 +42,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [period, setPeriod] = useState<PeriodFilter>({ from: '2026-01-01', to: '2026-12-31' })
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
   const [ready, setReady] = useState(false)
+  const documentsRef = useRef(documents)
+  const entriesRef = useRef(entries)
+
+  useEffect(() => {
+    documentsRef.current = documents
+  }, [documents])
+
+  useEffect(() => {
+    entriesRef.current = entries
+  }, [entries])
 
   useEffect(() => {
     setDocuments(loadDocuments())
@@ -160,6 +173,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
+  const deleteDocument = useCallback((documentId: string) => {
+    const next = cascadeRemoveDocument(documentsRef.current, entriesRef.current, documentId)
+    documentsRef.current = next.documents
+    entriesRef.current = next.entries
+    saveDocuments(next.documents)
+    saveEntries(next.entries)
+    setDocuments(next.documents)
+    setEntries(next.entries)
+  }, [])
+
   const addManualEntry = useCallback(() => {
     const id = uid('je')
     const entry: JournalEntry = {
@@ -187,6 +210,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setPeriod,
       addDocument,
       extractDocument,
+      deleteDocument,
       updateEntry,
       approveEntry,
       deleteEntry,
@@ -199,6 +223,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       period,
       addDocument,
       extractDocument,
+      deleteDocument,
       updateEntry,
       approveEntry,
       deleteEntry,
