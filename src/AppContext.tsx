@@ -225,6 +225,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
     const summaryParts = [
       sourceLabel,
+      result.model ? `(${result.model})` : '',
       `$${Number(result.amount).toFixed(2)}`,
       result.vendor,
       result.memo,

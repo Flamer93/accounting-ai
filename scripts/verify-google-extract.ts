@@ -1,4 +1,9 @@
-import { extractFromUpload, mockExtract, normalizeFields } from '../server/extract.ts'
+import {
+  extractFromUpload,
+  GEMINI_MODEL_FALLBACKS,
+  mockExtract,
+  normalizeFields,
+} from '../server/extract.ts'
 
 const tinyPng =
   'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
@@ -17,6 +22,13 @@ function assert(cond: unknown, msg: string) {
     console.log('ok', msg)
   }
 }
+
+assert(
+  !GEMINI_MODEL_FALLBACKS.some((m) => m.includes('1.5')),
+  'fallback list has no retired gemini-1.5 models',
+)
+assert(GEMINI_MODEL_FALLBACKS[0] === 'gemini-2.0-flash', 'prefers gemini-2.0-flash first')
+console.log('gemini fallbacks:', GEMINI_MODEL_FALLBACKS.join(' → '))
 
 const fields = normalizeFields(['date', 'vendor', 'amount', 'memo', 'debitAccount', 'creditAccount'])
 

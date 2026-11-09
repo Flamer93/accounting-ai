@@ -24,7 +24,17 @@ export interface ExtractPayload {
   fields: ExtractFieldKey[]
   /** Present when a preferred provider failed and a lower-priority provider was used. */
   warning?: string
+  /** Gemini model id that produced the result (Google extracts only). */
+  model?: string
 }
+
+/** Prefer current flash models; skip retired 1.5 ids that 404 on v1beta. */
+export const GEMINI_MODEL_FALLBACKS = [
+  'gemini-2.0-flash',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash-001',
+  'gemini-flash-latest',
+] as const
 
 const GOOGLE_SUPPORTED_MIME = new Set([
   'image/jpeg',
@@ -248,15 +258,14 @@ export async function googleExtract(
 
   const prompt = `Extract bookkeeping fields from this receipt image named ${filename}. Reply with JSON only (no markdown) using these keys: ${fieldPrompt(fields)}.`
 
-  const models = ['gemini-2.0-flash', 'gemini-1.5-flash']
   let lastError = 'Google Gemini request failed'
-  for (const model of models) {
+  for (const model of GEMINI_MODEL_FALLBACKS) {
     const response = await callGeminiModel(model, apiKey, normalizedMime, base64, prompt)
     if (!response.ok) {
       const text = sanitizeProviderError(await response.text())
       lastError = `Google Gemini error ${response.status} (${model}): ${text}`
-      // Try next model on not-found / unsupported
-      if (response.status === 404 || response.status === 400) continue
+      // Only walk the fallback list for missing/retired model ids
+      if (response.status === 404) continue
       throw new Error(lastError)
     }
 
@@ -266,14 +275,16 @@ export async function googleExtract(
     }
     if (json.error?.message) {
       lastError = `Google Gemini error (${model}): ${sanitizeProviderError(json.error.message)}`
-      continue
+      if (/not found|not supported/i.test(json.error.message)) continue
+      throw new Error(lastError)
     }
     const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
     if (!content) {
       lastError = `Empty Google Gemini response (${model})`
       continue
     }
-    return toPayload(parseExtractJson(content), fields, 'google', false)
+    const payload = toPayload(parseExtractJson(content), fields, 'google', false)
+    return { ...payload, model }
   }
 
   throw new Error(lastError)
