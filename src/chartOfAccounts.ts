@@ -19,7 +19,8 @@ export const CHART_OF_ACCOUNTS: Account[] = [
 export const accountByCode = (code: string): Account | undefined =>
   CHART_OF_ACCOUNTS.find((a) => a.code === code)
 
+/** User-facing account name only (codes stay on the value / for posting). */
 export const accountLabel = (code: string): string => {
   const account = accountByCode(code)
-  return account ? `${account.code} · ${account.name}` : code
+  return account ? account.name : code
 }

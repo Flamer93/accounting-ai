@@ -83,7 +83,7 @@ export function PostEntryForm({
           <select value={debitAccount} onChange={(e) => setDebitAccount(e.target.value)}>
             {CHART_OF_ACCOUNTS.map((a) => (
               <option key={a.code} value={a.code}>
-                {a.code} · {a.name}
+                {a.name}
               </option>
             ))}
           </select>
@@ -93,7 +93,7 @@ export function PostEntryForm({
           <select value={creditAccount} onChange={(e) => setCreditAccount(e.target.value)}>
             {CHART_OF_ACCOUNTS.map((a) => (
               <option key={a.code} value={a.code}>
-                {a.code} · {a.name}
+                {a.name}
               </option>
             ))}
           </select>

@@ -76,7 +76,7 @@ export function TrialBalance() {
                 <option value="">Select…</option>
                 {CHART_OF_ACCOUNTS.map((a) => (
                   <option key={a.code} value={a.code}>
-                    {a.code} · {a.name}
+                    {a.name}
                   </option>
                 ))}
               </select>
@@ -106,7 +106,7 @@ export function TrialBalance() {
               <select value={offset} onChange={(e) => setOffset(e.target.value)}>
                 {CHART_OF_ACCOUNTS.map((a) => (
                   <option key={a.code} value={a.code}>
-                    {a.code} · {a.name}
+                    {a.name}
                   </option>
                 ))}
               </select>

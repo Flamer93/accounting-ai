@@ -35,7 +35,7 @@ export function TAccounts() {
           <select value={focus} onChange={(e) => setFocus(e.target.value)}>
             {ledger.map((a) => (
               <option key={a.code} value={a.code}>
-                {a.code} · {a.name}
+                {a.name}
               </option>
             ))}
           </select>
