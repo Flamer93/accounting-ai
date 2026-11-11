@@ -23,7 +23,7 @@ export interface JournalEntry {
   lines: JournalLine[]
   status: EntryStatus
   editRequired?: boolean
-  source: 'seed' | 'extract' | 'manual'
+  source: 'seed' | 'extract' | 'manual' | 'opening'
   createdAt: string
   tax?: number
   category?: string

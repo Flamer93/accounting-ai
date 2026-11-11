@@ -1,5 +1,9 @@
 import type { Account, AccountType } from './types'
 
+/** Contra plug for opening-balance journal entries (debit/credit to keep books balanced). */
+export const OPENING_BALANCE_EQUITY_CODE = '3200'
+export const OPENING_BALANCE_EQUITY_NAME = 'Opening Balance Equity'
+
 export const DEFAULT_CHART_OF_ACCOUNTS: Account[] = [
   { code: '1000', name: 'Cash', type: 'asset' },
   { code: '1100', name: 'Accounts Receivable', type: 'asset' },
@@ -7,6 +11,7 @@ export const DEFAULT_CHART_OF_ACCOUNTS: Account[] = [
   { code: '2000', name: 'Accounts Payable', type: 'liability' },
   { code: '3000', name: "Owner's Equity", type: 'equity' },
   { code: '3100', name: 'Owner Drawings', type: 'equity' },
+  { code: OPENING_BALANCE_EQUITY_CODE, name: OPENING_BALANCE_EQUITY_NAME, type: 'equity' },
   { code: '4000', name: 'Service Revenue', type: 'revenue' },
   { code: '5000', name: 'Rent Expense', type: 'expense' },
   { code: '5100', name: 'Utilities Expense', type: 'expense' },
@@ -117,4 +122,28 @@ export function nextAccountCode(type: AccountType, chart: Account[] = liveChart)
 
 export function accountsSorted(chart: Account[] = liveChart): Account[] {
   return [...chart].sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name))
+}
+
+/** Ensure Opening Balance Equity exists so opening posts can balance (idempotent). */
+export function ensureOpeningBalanceEquity(chart: Account[]): {
+  accounts: Account[]
+  created: boolean
+  account: Account
+} {
+  const existing = chart.find((a) => a.code === OPENING_BALANCE_EQUITY_CODE)
+  if (existing) {
+    return { accounts: accountsSorted(chart), created: false, account: existing }
+  }
+  const byName = chart.find(
+    (a) => a.type === 'equity' && a.name.toLowerCase() === OPENING_BALANCE_EQUITY_NAME.toLowerCase(),
+  )
+  if (byName) {
+    return { accounts: accountsSorted(chart), created: false, account: byName }
+  }
+  const account: Account = {
+    code: OPENING_BALANCE_EQUITY_CODE,
+    name: OPENING_BALANCE_EQUITY_NAME,
+    type: 'equity',
+  }
+  return { accounts: accountsSorted([...chart, account]), created: true, account }
 }

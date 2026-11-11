@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
+import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { useAuth } from '../firebase/AuthContext'
 import {
   EXTRACT_FIELD_META,
@@ -143,6 +144,15 @@ export function Settings() {
       </div>
 
       <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
+        <h2>Opening balances</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Begin a month or period with starting amounts already in accounts (Cash, receivables,
+          payables, equity, and the rest of the chart). Posts one balancing journal entry.
+        </p>
+        <OpeningBalancesPanel />
+      </div>
+
+      <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
         <h2>Clear books</h2>
         <ClearBooksPanel />
       </div>
@@ -153,6 +163,10 @@ export function Settings() {
           <li>
             <strong>Accounts</strong> — manage above; add/delete names shared by every journal and
             statement form.
+          </li>
+          <li>
+            <strong>Opening balances</strong> — set starting amounts (e.g. Cash $1500) here or via
+            Journal → Opening balances; optional clear + period From for a new month.
           </li>
           <li>
             <strong>Journal</strong> — primary editable entry (quick post or classic draft).

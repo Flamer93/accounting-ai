@@ -1,5 +1,10 @@
-import { accountByCode, accountLabel, getChartOfAccounts } from './chartOfAccounts'
-import type { AccountType, JournalEntry, JournalLine, PeriodFilter } from './types'
+import {
+  accountByCode,
+  accountLabel,
+  getChartOfAccounts,
+  OPENING_BALANCE_EQUITY_CODE,
+} from './chartOfAccounts'
+import type { Account, AccountType, JournalEntry, JournalLine, PeriodFilter } from './types'
 
 export function roundMoney(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
@@ -262,4 +267,75 @@ export function accountTypeLabel(type: AccountType): string {
     default:
       return type
   }
+}
+
+/** Debit-normal account types (opening amount → debit side). */
+export function isDebitNormal(type: AccountType): boolean {
+  return type === 'asset' || type === 'expense'
+}
+
+export type OpeningBalanceAmount = {
+  accountCode: string
+  /** Positive amount on the account's normal balance side. */
+  amount: number
+}
+
+/**
+ * Build balanced journal lines for opening balances.
+ * Assets/expenses are debited; liabilities/equity/revenue are credited.
+ * Difference plugs to Opening Balance Equity (or `plugCode`).
+ */
+export function buildOpeningBalanceLines(
+  amounts: OpeningBalanceAmount[],
+  chart: Account[],
+  plugCode: string = OPENING_BALANCE_EQUITY_CODE,
+): { lines: JournalLine[]; errors: string[] } {
+  const errors: string[] = []
+  const lines: JournalLine[] = []
+  let debitTotal = 0
+  let creditTotal = 0
+
+  const plug = accountByCode(plugCode, chart)
+  if (!plug) {
+    errors.push(`Missing balancing account ${accountLabel(plugCode, chart)}`)
+    return { lines: [], errors }
+  }
+
+  for (const row of amounts) {
+    const amount = roundMoney(Number(row.amount) || 0)
+    if (!(amount > 0)) continue
+    if (row.accountCode === plugCode) {
+      errors.push(`Do not set an opening amount on ${accountLabel(plugCode, chart)} — it is the plug.`)
+      continue
+    }
+    const account = accountByCode(row.accountCode, chart)
+    if (!account) {
+      errors.push(`Unknown account ${accountLabel(row.accountCode, chart)}`)
+      continue
+    }
+    if (isDebitNormal(account.type)) {
+      lines.push({ accountCode: account.code, debit: amount, credit: 0 })
+      debitTotal = roundMoney(debitTotal + amount)
+    } else {
+      lines.push({ accountCode: account.code, debit: 0, credit: amount })
+      creditTotal = roundMoney(creditTotal + amount)
+    }
+  }
+
+  if (!lines.length) {
+    errors.push('Enter at least one opening amount greater than zero')
+    return { lines: [], errors }
+  }
+
+  const diff = roundMoney(debitTotal - creditTotal)
+  if (diff > 0) {
+    lines.push({ accountCode: plug.code, debit: 0, credit: diff })
+  } else if (diff < 0) {
+    lines.push({ accountCode: plug.code, debit: roundMoney(-diff), credit: 0 })
+  }
+
+  if (!isBalanced(lines)) {
+    errors.push('Opening entry could not be balanced')
+  }
+  return { lines, errors }
 }
