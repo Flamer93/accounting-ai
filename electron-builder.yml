@@ -1,0 +1,66 @@
+appId: com.accountingai.app
+productName: Accounting AI
+copyright: Copyright © Accounting AI
+directories:
+  output: release
+  buildResources: electron/build
+files:
+  - electron/**/*
+  - package.json
+  - '!**/*.ts'
+  - '!server/**'
+  - '!src/**'
+  - '!scripts/**'
+  - '!release/**'
+  - '!dist-electron/**'
+extraResources:
+  - from: dist-electron/server.cjs
+    to: server.cjs
+  - from: dist
+    to: app-dist
+  - from: electron/desktop.env.example
+    to: desktop.env.example
+
+# One Electron shell — Windows + macOS
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-win-${arch}.${ext}
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Accounting AI
+
+mac:
+  # Electron 44+ requires macOS 13 (Ventura). Keep the floor at Ventura — do not raise to Sonoma/Sequoia.
+  minimumSystemVersion: '13.0'
+  category: public.app-category.finance
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+  # Unsigned local/CI builds (set Apple certs + remove identity:null for notarized releases)
+  identity: null
+  hardenedRuntime: false
+  gatekeeperAssess: false
+
+dmg:
+  artifactName: ${productName}-${version}-mac-${arch}.${ext}
+
+linux:
+  target: []
