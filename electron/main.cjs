@@ -1,7 +1,8 @@
 'use strict'
 
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, dialog } = require('electron')
 const { spawn } = require('node:child_process')
+const fs = require('node:fs')
 const http = require('node:http')
 const net = require('node:net')
 const path = require('node:path')
@@ -64,9 +65,21 @@ function waitForHealth(port, timeoutMs = 60_000) {
   })
 }
 
+function appendDesktopLog(line) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'desktop.log')
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8')
+  } catch {
+    /* ignore logging failures */
+  }
+}
+
 function startPackagedServer(port) {
   const serverPath = path.join(process.resourcesPath, 'server.cjs')
   const staticRoot = path.join(process.resourcesPath, 'app-dist')
+  if (!fs.existsSync(serverPath)) {
+    throw new Error(`Missing packaged server at ${serverPath}`)
+  }
   serverProcess = spawn(process.execPath, [serverPath], {
     env: {
       ...process.env,
@@ -81,16 +94,22 @@ function startPackagedServer(port) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   serverProcess.stdout?.on('data', (chunk) => {
-    process.stdout.write(`[server] ${chunk}`)
+    const text = String(chunk)
+    process.stdout.write(`[server] ${text}`)
+    appendDesktopLog(`[server] ${text.trimEnd()}`)
   })
   serverProcess.stderr?.on('data', (chunk) => {
-    process.stderr.write(`[server] ${chunk}`)
+    const text = String(chunk)
+    process.stderr.write(`[server] ${text}`)
+    appendDesktopLog(`[server:err] ${text.trimEnd()}`)
   })
   serverProcess.on('exit', (code, signal) => {
     serverProcess = null
     serverPort = null
     if (!quitting) {
-      console.error(`Extract server exited (code=${code}, signal=${signal})`)
+      const msg = `Extract server exited (code=${code}, signal=${signal})`
+      console.error(msg)
+      appendDesktopLog(msg)
     }
   })
 }
@@ -195,18 +214,42 @@ if (process.platform === 'linux') {
   app.disableHardwareAcceleration()
 }
 
+async function failStartup(err) {
+  const message = err instanceof Error ? err.stack || err.message : String(err)
+  console.error(message)
+  appendDesktopLog(`startup failed: ${message}`)
+  const logHint = (() => {
+    try {
+      return `\n\nLog file:\n${path.join(app.getPath('userData'), 'desktop.log')}`
+    } catch {
+      return ''
+    }
+  })()
+  try {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Accounting AI failed to start',
+      message: 'The desktop app could not start.',
+      detail: `${message}${logHint}`,
+      buttons: ['OK'],
+    })
+  } catch {
+    /* ignore dialog failures */
+  }
+  app.quit()
+}
+
 app.whenReady().then(() => {
+  appendDesktopLog(`starting packaged=${app.isPackaged} platform=${process.platform}`)
   bootstrap().catch((err) => {
-    console.error(err)
-    app.quit()
+    void failStartup(err)
   })
 
   app.on('activate', () => {
     // macOS: re-open a window when clicking the dock icon
     if (BrowserWindow.getAllWindows().length === 0) {
       bootstrap().catch((err) => {
-        console.error(err)
-        app.quit()
+        void failStartup(err)
       })
     }
   })
