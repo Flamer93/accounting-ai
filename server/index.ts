@@ -57,12 +57,36 @@ async function createApp() {
       openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
       googleKeyPresent: Boolean(googleHeader),
       openaiKeyPresent: Boolean(openaiHeader),
+      firebaseConfigured: Boolean(
+        process.env.FIREBASE_API_KEY &&
+          process.env.FIREBASE_AUTH_DOMAIN &&
+          process.env.FIREBASE_PROJECT_ID &&
+          process.env.FIREBASE_APP_ID,
+      ),
       extractPriority: [
         'google (request key)',
         'openai (request key or host env)',
         'mock',
       ],
     })
+  })
+
+  /** Public Firebase web config from host env (no VITE_/NEXT_PUBLIC_ prefixes). */
+  app.get('/api/firebase-config', (_req, res) => {
+    const config = {
+      apiKey: String(process.env.FIREBASE_API_KEY || '').trim(),
+      authDomain: String(process.env.FIREBASE_AUTH_DOMAIN || '').trim(),
+      projectId: String(process.env.FIREBASE_PROJECT_ID || '').trim(),
+      storageBucket: String(process.env.FIREBASE_STORAGE_BUCKET || '').trim(),
+      messagingSenderId: String(process.env.FIREBASE_MESSAGING_SENDER_ID || '').trim(),
+      appId: String(process.env.FIREBASE_APP_ID || '').trim(),
+    }
+    const configured = Boolean(config.apiKey && config.authDomain && config.projectId && config.appId)
+    if (!configured) {
+      res.json({ configured: false })
+      return
+    }
+    res.json({ configured: true, config })
   })
 
   app.post('/api/extract', upload.single('file'), async (req, res) => {

@@ -1,3 +1,4 @@
+import type { Firestore } from 'firebase/firestore'
 import {
   createContext,
   useCallback,
@@ -14,40 +15,31 @@ import {
   accountLabel,
   accountsSorted,
   DEFAULT_CHART_OF_ACCOUNTS,
-  loadAccounts,
   nextAccountCode,
-  saveAccounts,
   setChartOfAccounts,
 } from './chartOfAccounts'
 import { cascadeRemoveDocument } from './documentCascade'
-import {
-  clearGoogleApiKey,
-  hasGoogleApiKey,
-  loadGoogleApiKey,
-  saveGoogleApiKey,
-} from './googleKey'
-import {
-  clearOpenAiApiKey,
-  hasOpenAiApiKey,
-  loadOpenAiApiKey,
-  saveOpenAiApiKey,
-} from './openaiKey'
-import {
-  enabledExtractFields,
-  loadSettings,
-  normalizeSettings,
-  saveSettings,
-  type AppSettings,
-} from './settings'
+import type { AuthMode } from './firebase/types'
+import { loadUserBooks, saveUserBooks, type UserBooks } from './firebase/books'
+import { loadLocalUserBooks, saveLocalUserBooks } from './firebase/localBooks'
 import { normalizeReceiptImage } from './normalizeReceiptImage'
 import {
-  loadDocuments,
-  loadEntries,
-  saveDocuments,
-  saveEntries,
-  uid,
-} from './storage'
+  enabledExtractFields,
+  normalizeSettings,
+  type AppSettings,
+} from './settings'
+import { uid } from './storage'
 import type { Account, AccountType, DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
+import {
+  clearGoogleApiKey,
+  clearOpenAiApiKey,
+  hasGoogleApiKey,
+  hasOpenAiApiKey,
+  loadGoogleApiKey,
+  loadOpenAiApiKey,
+  saveGoogleApiKey,
+  saveOpenAiApiKey,
+} from './userKeys'
 
 export type ExtractProvider = 'google' | 'openai' | 'mock' | null
 
@@ -57,6 +49,8 @@ interface AppState {
   accounts: Account[]
   period: PeriodFilter
   settings: AppSettings
+  booksReady: boolean
+  persistError: string | null
   setPeriod: (period: PeriodFilter) => void
   updateSettings: (next: AppSettings) => void
   addAccount: (input: { name: string; type: AccountType }) => { errors: string[]; account?: Account }
@@ -155,7 +149,35 @@ function pickDefaultAccount(accounts: Account[], preferredCodes: string[]): stri
   return accounts[0]?.code || ''
 }
 
-export function AppProvider({ children }: { children: ReactNode }) {
+function applyBooks(books: UserBooks, setters: {
+  setDocuments: (d: DocumentRecord[]) => void
+  setEntries: (e: JournalEntry[]) => void
+  setAccounts: (a: Account[]) => void
+  setSettings: (s: AppSettings) => void
+  documentsRef: { current: DocumentRecord[] }
+  entriesRef: { current: JournalEntry[] }
+  settingsRef: { current: AppSettings }
+  accountsRef: { current: Account[] }
+}) {
+  setters.documentsRef.current = books.documents
+  setters.entriesRef.current = books.entries
+  setters.settingsRef.current = books.settings
+  setters.accountsRef.current = books.accounts
+  setChartOfAccounts(books.accounts)
+  setters.setDocuments(books.documents)
+  setters.setEntries(books.entries)
+  setters.setAccounts(books.accounts)
+  setters.setSettings(books.settings)
+}
+
+type AppProviderProps = {
+  children: ReactNode
+  userId: string
+  authMode: AuthMode
+  firestore: Firestore | null
+}
+
+export function AppProvider({ children, userId, authMode, firestore }: AppProviderProps) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -164,11 +186,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
   const [googleKeySaved, setGoogleKeySaved] = useState(false)
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false)
-  const [ready, setReady] = useState(false)
+  const [booksReady, setBooksReady] = useState(false)
+  const [persistError, setPersistError] = useState<string | null>(null)
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
   const settingsRef = useRef(settings)
   const accountsRef = useRef(accounts)
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     documentsRef.current = documents
@@ -187,71 +211,144 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setChartOfAccounts(accounts)
   }, [accounts])
 
+  // Boot this user's books — remount (key=uid) clears prior session state.
   useEffect(() => {
-    setDocuments(loadDocuments())
-    setEntries(loadEntries())
-    setAccounts(loadAccounts())
-    setSettings(loadSettings())
-    setGoogleKeySaved(hasGoogleApiKey())
-    setOpenaiKeySaved(hasOpenAiApiKey())
-    setReady(true)
+    let cancelled = false
+    setBooksReady(false)
+    setPersistError(null)
+    setPeriod({})
+    setDocuments([])
+    setEntries([])
+    setAccounts([])
+    setSettings(DEFAULT_BOOT_SETTINGS)
+
+    ;(async () => {
+      try {
+        let books: UserBooks
+        if (authMode === 'firebase' && firestore) {
+          books = await loadUserBooks(firestore, userId)
+        } else {
+          books = loadLocalUserBooks(userId)
+        }
+        if (cancelled) return
+        applyBooks(books, {
+          setDocuments,
+          setEntries,
+          setAccounts,
+          setSettings,
+          documentsRef,
+          entriesRef,
+          settingsRef,
+          accountsRef,
+        })
+        setGoogleKeySaved(hasGoogleApiKey(userId))
+        setOpenaiKeySaved(hasOpenAiApiKey(userId))
+        setBooksReady(true)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Failed to load user books', err)
+        setPersistError(err instanceof Error ? err.message : 'Failed to load books')
+        const fallback = loadLocalUserBooks(userId)
+        applyBooks(fallback, {
+          setDocuments,
+          setEntries,
+          setAccounts,
+          setSettings,
+          documentsRef,
+          entriesRef,
+          settingsRef,
+          accountsRef,
+        })
+        setGoogleKeySaved(hasGoogleApiKey(userId))
+        setOpenaiKeySaved(hasOpenAiApiKey(userId))
+        setBooksReady(true)
+      }
+    })()
+
     const headers: HeadersInit = {}
-    const googleKey = loadGoogleApiKey()
-    const openaiKey = loadOpenAiApiKey()
+    const googleKey = loadGoogleApiKey(userId)
+    const openaiKey = loadOpenAiApiKey(userId)
     if (googleKey) headers['X-Google-Api-Key'] = googleKey
     if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
     apiFetch('/api/health', { headers }, 10_000)
       .then((r) => r.json())
       .then((j: { openaiConfigured?: boolean }) => setOpenaiConfigured(Boolean(j.openaiConfigured)))
       .catch(() => setOpenaiConfigured(false))
-  }, [])
+
+    return () => {
+      cancelled = true
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+    }
+  }, [userId, authMode, firestore])
+
+  const persistBooks = useCallback(
+    (next: UserBooks) => {
+      // Always keep a uid-scoped local mirror so account switches stay isolated offline.
+      saveLocalUserBooks(userId, next)
+      if (authMode !== 'firebase' || !firestore) return
+      if (saveTimer.current) clearTimeout(saveTimer.current)
+      saveTimer.current = setTimeout(() => {
+        saveUserBooks(firestore, userId, next)
+          .then(() => setPersistError(null))
+          .catch((err) => {
+            console.error('Failed to save books', err)
+            setPersistError(err instanceof Error ? err.message : 'Failed to save books')
+          })
+      }, 450)
+    },
+    [authMode, firestore, userId],
+  )
+
+  const snapshot = useCallback(
+    (overrides?: Partial<UserBooks>): UserBooks => ({
+      documents: overrides?.documents ?? documentsRef.current,
+      entries: overrides?.entries ?? entriesRef.current,
+      accounts: overrides?.accounts ?? accountsRef.current,
+      settings: overrides?.settings ?? settingsRef.current,
+    }),
+    [],
+  )
 
   useEffect(() => {
-    if (!ready) return
-    saveDocuments(documents)
-  }, [documents, ready])
+    if (!booksReady) return
+    persistBooks(snapshot())
+  }, [documents, entries, accounts, settings, booksReady, persistBooks, snapshot])
 
-  useEffect(() => {
-    if (!ready) return
-    saveEntries(entries)
-  }, [entries, ready])
+  const updateSettings = useCallback(
+    (next: AppSettings) => {
+      const normalized = normalizeSettings(next)
+      settingsRef.current = normalized
+      setSettings(normalized)
+      persistBooks(snapshot({ settings: normalized }))
+    },
+    [persistBooks, snapshot],
+  )
 
-  useEffect(() => {
-    if (!ready) return
-    saveSettings(settings)
-  }, [settings, ready])
-
-  useEffect(() => {
-    if (!ready) return
-    saveAccounts(accounts)
-  }, [accounts, ready])
-
-  const updateSettings = useCallback((next: AppSettings) => {
-    const normalized = normalizeSettings(next)
-    settingsRef.current = normalized
-    saveSettings(normalized)
-    setSettings(normalized)
-  }, [])
-
-  const saveGoogleKey = useCallback((key: string) => {
-    saveGoogleApiKey(key)
-    setGoogleKeySaved(hasGoogleApiKey())
-  }, [])
+  const saveGoogleKey = useCallback(
+    (key: string) => {
+      saveGoogleApiKey(userId, key)
+      setGoogleKeySaved(hasGoogleApiKey(userId))
+    },
+    [userId],
+  )
 
   const removeGoogleKey = useCallback(() => {
-    clearGoogleApiKey()
+    clearGoogleApiKey(userId)
     setGoogleKeySaved(false)
-  }, [])
+  }, [userId])
 
-  const saveOpenAiKey = useCallback((key: string) => {
-    saveOpenAiApiKey(key)
-    setOpenaiKeySaved(hasOpenAiApiKey())
-  }, [])
+  const saveOpenAiKey = useCallback(
+    (key: string) => {
+      saveOpenAiApiKey(userId, key)
+      setOpenaiKeySaved(hasOpenAiApiKey(userId))
+    },
+    [userId],
+  )
 
   const removeOpenAiKey = useCallback(() => {
-    clearOpenAiApiKey()
+    clearOpenAiApiKey(userId)
     setOpenaiKeySaved(false)
-  }, [])
+  }, [userId])
 
   const preferredProvider: ExtractProvider = googleKeySaved
     ? 'google'
@@ -261,118 +358,132 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ? null
         : 'mock'
 
-  const addDocument = useCallback((file: File, dataUrl: string) => {
-    const doc: DocumentRecord = {
-      id: uid('doc'),
-      name: file.name,
-      mimeType: file.type || 'application/octet-stream',
-      dataUrl,
-      uploadedAt: new Date().toISOString(),
-      extractionStatus: 'pending',
-      entryIds: [],
-    }
-    setDocuments((prev) => {
-      const next = [doc, ...prev]
-      saveDocuments(next)
-      return next
-    })
-    return doc
-  }, [])
+  const addDocument = useCallback(
+    (file: File, dataUrl: string) => {
+      const doc: DocumentRecord = {
+        id: uid('doc'),
+        name: file.name,
+        mimeType: file.type || 'application/octet-stream',
+        dataUrl,
+        uploadedAt: new Date().toISOString(),
+        extractionStatus: 'pending',
+        entryIds: [],
+      }
+      setDocuments((prev) => {
+        const next = [doc, ...prev]
+        documentsRef.current = next
+        persistBooks(snapshot({ documents: next }))
+        return next
+      })
+      return doc
+    },
+    [persistBooks, snapshot],
+  )
 
-  const extractDocument = useCallback(async (documentId: string) => {
-    const doc =
-      documentsRef.current.find((d) => d.id === documentId) ||
-      loadDocuments().find((d) => d.id === documentId)
-    if (!doc) throw new Error('Document not found')
+  const extractDocument = useCallback(
+    async (documentId: string) => {
+      const doc =
+        documentsRef.current.find((d) => d.id === documentId) ||
+        snapshot().documents.find((d) => d.id === documentId)
+      if (!doc) throw new Error('Document not found')
 
-    const fields = enabledExtractFields(settingsRef.current)
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-    const googleKey = loadGoogleApiKey()
-    const openaiKey = loadOpenAiApiKey()
-    // Send via header and body so a proxy that strips custom headers still works
-    if (googleKey) headers['X-Google-Api-Key'] = googleKey
-    if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
+      const fields = enabledExtractFields(settingsRef.current)
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const googleKey = loadGoogleApiKey(userId)
+      const openaiKey = loadOpenAiApiKey(userId)
+      // Send via header and body so a proxy that strips custom headers still works
+      if (googleKey) headers['X-Google-Api-Key'] = googleKey
+      if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
 
-    let normalizedDataUrl = doc.dataUrl
-    let bottomDataUrl: string | undefined
-    try {
-      const prepared = await normalizeReceiptImage(doc.dataUrl)
-      normalizedDataUrl = prepared.dataUrl
-      bottomDataUrl = prepared.bottomDataUrl
-    } catch {
-      // Fall back to the stored data URL if canvas normalize fails
-    }
+      let normalizedDataUrl = doc.dataUrl
+      let bottomDataUrl: string | undefined
+      try {
+        const prepared = await normalizeReceiptImage(doc.dataUrl)
+        normalizedDataUrl = prepared.dataUrl
+        bottomDataUrl = prepared.bottomDataUrl
+      } catch {
+        // Fall back to the stored data URL if canvas normalize fails
+      }
 
-    let res: Response
-    try {
-      res = await apiFetch(
-        '/api/extract',
-        {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            dataUrl: normalizedDataUrl,
-            ...(bottomDataUrl ? { bottomDataUrl } : {}),
-            filename: doc.name,
-            size: normalizedDataUrl.length,
-            fields,
-            ...(googleKey ? { googleApiKey: googleKey } : {}),
-            ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
-          }),
-        },
-        195_000,
-      )
-    } catch (err) {
-      setDocuments((prev) =>
-        prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
-      )
-      throw err
-    }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}))
-      setDocuments((prev) =>
-        prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
-      )
-      throw new Error((err as { error?: string }).error || `Extract failed (HTTP ${res.status})`)
-    }
-    const result = (await res.json()) as ExtractResult
-    if ((googleKey || openaiKey) && result.source === 'mock') {
-      throw new Error(
-        'An AI key was sent but the server returned a mock extract. Check that /api/extract received the key.',
-      )
-    }
-    const entry = entryFromExtract(doc.id, result)
-    const sourceLabel =
-      result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
-    const lineCount = result.lineItems?.length
-    const summaryParts = [
-      sourceLabel,
-      result.model ? `(${result.model})` : '',
-      `$${Number(result.amount).toFixed(2)}`,
-      result.vendor,
-      result.memo,
-      lineCount ? `${lineCount} line item${lineCount === 1 ? '' : 's'}` : '',
-      entry.status === 'approved' ? 'posted to books' : 'draft — Approve & post in Journal',
-      result.warning,
-    ].filter(Boolean)
+      let res: Response
+      try {
+        res = await apiFetch(
+          '/api/extract',
+          {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              dataUrl: normalizedDataUrl,
+              ...(bottomDataUrl ? { bottomDataUrl } : {}),
+              filename: doc.name,
+              size: normalizedDataUrl.length,
+              fields,
+              ...(googleKey ? { googleApiKey: googleKey } : {}),
+              ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
+            }),
+          },
+          195_000,
+        )
+      } catch (err) {
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
+        )
+        throw err
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        setDocuments((prev) =>
+          prev.map((d) => (d.id === documentId ? { ...d, extractionStatus: 'failed' } : d)),
+        )
+        throw new Error((err as { error?: string }).error || `Extract failed (HTTP ${res.status})`)
+      }
+      const result = (await res.json()) as ExtractResult
+      if ((googleKey || openaiKey) && result.source === 'mock') {
+        throw new Error(
+          'An AI key was sent but the server returned a mock extract. Check that /api/extract received the key.',
+        )
+      }
+      const entry = entryFromExtract(doc.id, result)
+      const sourceLabel =
+        result.source === 'google' ? 'Google extract' : result.source === 'openai' ? 'OpenAI extract' : 'Mock extract'
+      const lineCount = result.lineItems?.length
+      const summaryParts = [
+        sourceLabel,
+        result.model ? `(${result.model})` : '',
+        `$${Number(result.amount).toFixed(2)}`,
+        result.vendor,
+        result.memo,
+        lineCount ? `${lineCount} line item${lineCount === 1 ? '' : 's'}` : '',
+        entry.status === 'approved' ? 'posted to books' : 'draft — Approve & post in Journal',
+        result.warning,
+      ].filter(Boolean)
 
-    setEntries((prev) => [entry, ...prev])
-    setDocuments((prev) =>
-      prev.map((d) =>
-        d.id === documentId
-          ? {
-              ...d,
-              extractionStatus: 'extracted',
-              editRequired: entry.status !== 'approved' && Boolean(entry.editRequired),
-              entryIds: [...d.entryIds, entry.id],
-              lastExtractSource: result.source,
-              lastExtractSummary: summaryParts.join(' · '),
-            }
-          : d,
-      ),
-    )
-    return { entry, warning: result.warning }
-  }, [])
+      setEntries((prev) => {
+        const next = [entry, ...prev]
+        entriesRef.current = next
+        return next
+      })
+      setDocuments((prev) => {
+        const next = prev.map((d) =>
+          d.id === documentId
+            ? {
+                ...d,
+                extractionStatus: 'extracted' as const,
+                editRequired: entry.status !== 'approved' && Boolean(entry.editRequired),
+                entryIds: [...d.entryIds, entry.id],
+                lastExtractSource: result.source,
+                lastExtractSummary: summaryParts.join(' · '),
+              }
+            : d,
+        )
+        documentsRef.current = next
+        persistBooks(snapshot({ documents: next, entries: entriesRef.current }))
+        return next
+      })
+      return { entry, warning: result.warning }
+    },
+    [persistBooks, snapshot, userId],
+  )
 
   const updateEntry = useCallback((entry: JournalEntry) => {
     const errors = validateEntry(entry)
@@ -418,15 +529,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     )
   }, [])
 
-  const deleteDocument = useCallback((documentId: string) => {
-    const next = cascadeRemoveDocument(documentsRef.current, entriesRef.current, documentId)
-    documentsRef.current = next.documents
-    entriesRef.current = next.entries
-    saveDocuments(next.documents)
-    saveEntries(next.entries)
-    setDocuments(next.documents)
-    setEntries(next.entries)
-  }, [])
+  const deleteDocument = useCallback(
+    (documentId: string) => {
+      const next = cascadeRemoveDocument(documentsRef.current, entriesRef.current, documentId)
+      documentsRef.current = next.documents
+      entriesRef.current = next.entries
+      setDocuments(next.documents)
+      setEntries(next.entries)
+      persistBooks(snapshot({ documents: next.documents, entries: next.entries }))
+    },
+    [persistBooks, snapshot],
+  )
 
   const addAccount = useCallback((input: { name: string; type: AccountType }) => {
     const name = input.name.trim()
@@ -537,19 +650,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearJournal = useCallback(() => {
     documentsRef.current = []
     entriesRef.current = []
-    saveDocuments([])
-    saveEntries([])
     setDocuments([])
     setEntries([])
-  }, [])
+    persistBooks(snapshot({ documents: [], entries: [] }))
+  }, [persistBooks, snapshot])
 
   const resetAccounts = useCallback(() => {
     const defaults = DEFAULT_CHART_OF_ACCOUNTS.map((a) => ({ ...a }))
     accountsRef.current = defaults
     setChartOfAccounts(defaults)
-    saveAccounts(defaults)
     setAccounts(defaults)
-  }, [])
+    persistBooks(snapshot({ accounts: defaults }))
+  }, [persistBooks, snapshot])
 
   const value = useMemo(
     () => ({
@@ -558,6 +670,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accounts,
       period,
       settings,
+      booksReady,
+      persistError,
       setPeriod,
       updateSettings,
       addAccount,
@@ -587,6 +701,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       accounts,
       period,
       settings,
+      booksReady,
+      persistError,
       updateSettings,
       addAccount,
       deleteAccount,
