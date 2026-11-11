@@ -6,10 +6,32 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { extractFromUpload } from './extract.ts'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const root = path.resolve(__dirname, '..')
+/** Works under tsx (ESM) and the Electron CJS bundle (no import.meta). */
+function serverDir(): string {
+  if (process.env.ELECTRON_SERVER_DIR) {
+    return path.resolve(process.env.ELECTRON_SERVER_DIR)
+  }
+  try {
+    const metaUrl = import.meta.url
+    if (typeof metaUrl === 'string' && metaUrl.startsWith('file:')) {
+      return path.dirname(fileURLToPath(metaUrl))
+    }
+  } catch {
+    /* CJS bundle */
+  }
+  // Bundled server.cjs — Node provides __dirname in CommonJS
+  const cjsDir = (globalThis as { __dirname?: string }).__dirname
+  if (typeof cjsDir === 'string' && cjsDir) return cjsDir
+  return process.cwd()
+}
+
+const root = path.resolve(process.env.APP_ROOT || path.join(serverDir(), '..'))
+const staticRoot = process.env.STATIC_ROOT
+  ? path.resolve(process.env.STATIC_ROOT)
+  : path.join(root, 'dist')
 const isProd = process.env.NODE_ENV === 'production'
 const port = Number(process.env.PORT || 5173)
+const host = process.env.HOST || '0.0.0.0'
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -38,7 +60,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   })
 }
 
-async function createApp() {
+export async function createApp() {
   const app = express()
   app.use(
     cors({
@@ -147,8 +169,7 @@ async function createApp() {
   })
 
   if (isProd) {
-    const dist = path.join(root, 'dist')
-    app.use(express.static(dist))
+    app.use(express.static(staticRoot))
     app.use((req, res, next) => {
       if (req.method !== 'GET' && req.method !== 'HEAD') {
         next()
@@ -158,7 +179,7 @@ async function createApp() {
         next()
         return
       }
-      res.sendFile(path.join(dist, 'index.html'))
+      res.sendFile(path.join(staticRoot, 'index.html'))
     })
   } else {
     const { createServer: createViteServer } = await import('vite')
@@ -186,22 +207,29 @@ async function createApp() {
   return app
 }
 
-createApp()
-  .then((app) => {
-    const server = app.listen(port, '0.0.0.0', () => {
-      console.log(`Receipt Ledger listening on http://127.0.0.1:${port}`)
-      console.log(
-        process.env.OPENAI_API_KEY
-          ? 'Host OpenAI extraction available; Google key may be sent per request'
-          : 'OPENAI_API_KEY unset — Google request key or mock extractor',
-      )
-    })
-    // Keep sockets alive long enough for Gemini (~180s budget + retries)
-    server.requestTimeout = 200_000
-    server.headersTimeout = 205_000
-    server.keepAliveTimeout = 10_000
+export async function startServer(options?: { port?: number; host?: string }) {
+  const listenPort = options?.port ?? port
+  const listenHost = options?.host ?? host
+  const app = await createApp()
+  const server = await new Promise<ReturnType<typeof app.listen>>((resolve, reject) => {
+    const s = app.listen(listenPort, listenHost, () => resolve(s))
+    s.on('error', reject)
   })
-  .catch((err) => {
-    console.error(err)
-    process.exit(1)
-  })
+  // Keep sockets alive long enough for Gemini (~180s budget + retries)
+  server.requestTimeout = 200_000
+  server.headersTimeout = 205_000
+  server.keepAliveTimeout = 10_000
+  console.log(`Receipt Ledger listening on http://127.0.0.1:${listenPort}`)
+  console.log(
+    process.env.OPENAI_API_KEY
+      ? 'Host OpenAI extraction available; Google key may be sent per request'
+      : 'OPENAI_API_KEY unset — Google request key or mock extractor',
+  )
+  return server
+}
+
+// Direct run (`tsx server/index.ts`) and Electron child (`ELECTRON_RUN_AS_NODE` + bundled server.cjs)
+startServer().catch((err) => {
+  console.error(err)
+  process.exit(1)
+})

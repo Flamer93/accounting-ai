@@ -2,13 +2,24 @@
   "name": "receipt-ledger",
   "private": true,
   "version": "1.0.0",
+  "description": "Accounting AI — multi-account books with local receipt extract",
+  "author": "Accounting AI",
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
     "preview": "NODE_ENV=production tsx server/index.ts",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "electron:dev": "concurrently -k -n server,electron -c cyan,magenta \"npm run dev\" \"wait-on http://127.0.0.1:5173/api/health && cross-env ELECTRON_START_URL=http://127.0.0.1:5173 electron .\"",
+    "electron:bundle": "node scripts/bundle-electron.mjs",
+    "electron:pack": "npm run build && npm run electron:bundle",
+    "electron:build:win": "npm run electron:pack && electron-builder --win portable --x64",
+    "electron:build:win:nsis": "npm run electron:pack && electron-builder --win nsis --x64",
+    "electron:build:mac": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac zip",
+    "electron:build:mac:dmg": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
+    "electron:build:desktop": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --x64 --mac zip"
   },
   "dependencies": {
     "cors": "^2.8.6",
@@ -28,8 +39,14 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "concurrently": "^10.0.7",
+    "cross-env": "^10.1.0",
+    "electron": "^45.3.0",
+    "electron-builder": "^26.18.0",
+    "esbuild": "^0.28.2",
     "oxlint": "^1.90.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "wait-on": "^9.5.1"
   }
 }

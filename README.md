@@ -33,6 +33,20 @@ Set these host env vars / Cursor secrets (no `VITE_` / `NEXT_PUBLIC_` prefixes):
 
 Enable Email/Password (and optionally Google) in Firebase Authentication, and Firestore with rules that restrict `users/{uid}/**` to that uid. See internal notes for rules and publish binding.
 
+## Desktop (Windows + macOS)
+
+One Electron shell wraps the same UI + local Express extract API.
+
+```bash
+npm run electron:dev          # Express/Vite + Electron window
+npm run electron:build:win    # NSIS installer + portable .exe
+npm run electron:build:mac    # DMG + ZIP (macOS 13 Ventura+)
+```
+
+macOS builds default to **unsigned** (`CSC_IDENTITY_AUTO_DISCOVERY=false`) so local/CI works without Apple certs. Signing/notarization needs a Developer ID — see internal desktop notes.
+
+Packaged apps load `FIREBASE_*` / `OPENAI_API_KEY` from the process env or a `desktop.env` file under the app userData folder (see `electron/desktop.env.example`).
+
 ## Notes
 
 - Per-user books persist in Firestore (`users/{uid}/books/main`) when Firebase is configured; otherwise per-uid localStorage.

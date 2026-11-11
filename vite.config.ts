@@ -20,4 +20,9 @@ function firebaseDefine() {
 export default defineConfig({
   plugins: [react()],
   define: firebaseDefine(),
+  server: {
+    watch: {
+      ignored: ['**/release/**', '**/dist-electron/**', '**/dist/**'],
+    },
+  },
 })
