@@ -17,6 +17,7 @@ export type ExtractFieldKey =
   | 'category'
 
 export interface AppSettings {
+  companyName: string
   nav: Record<NavViewKey, boolean>
   extractFields: Record<ExtractFieldKey, boolean>
 }
@@ -47,6 +48,7 @@ export const EXTRACT_FIELD_META: {
 ]
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  companyName: "Paul's Guitar Shop, Inc.",
   nav: {
     journal: true,
     ledger: true,
@@ -87,7 +89,11 @@ export function normalizeSettings(raw: Partial<AppSettings> | null | undefined):
     extractFields.debitAccount = true
     extractFields.creditAccount = true
   }
-  return { nav, extractFields }
+  const companyName =
+    typeof raw?.companyName === 'string' && raw.companyName.trim()
+      ? raw.companyName.trim()
+      : DEFAULT_SETTINGS.companyName
+  return { companyName, nav, extractFields }
 }
 
 export function loadSettings(): AppSettings {

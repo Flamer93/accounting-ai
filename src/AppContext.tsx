@@ -57,6 +57,18 @@ interface AppState {
   approveEntry: (entryId: string, override?: JournalEntry) => string[]
   deleteEntry: (entryId: string) => void
   addManualEntry: () => string
+  /**
+   * Create a balanced, approved journal entry from any books view.
+   * Returns errors or the new entry id.
+   */
+  postSimpleEntry: (input: {
+    date: string
+    memo: string
+    debitAccount: string
+    creditAccount: string
+    amount: number
+    vendor?: string
+  }) => { errors: string[]; entryId?: string }
   openaiConfigured: boolean | null
   googleKeySaved: boolean
   openaiKeySaved: boolean
@@ -390,6 +402,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return id
   }, [])
 
+  const postSimpleEntry = useCallback(
+    (input: {
+      date: string
+      memo: string
+      debitAccount: string
+      creditAccount: string
+      amount: number
+      vendor?: string
+    }) => {
+      const amount = Math.round((Number(input.amount) + Number.EPSILON) * 100) / 100
+      const entry: JournalEntry = {
+        id: uid('je'),
+        date: input.date,
+        memo: input.memo.trim() || 'Manual entry',
+        vendor: input.vendor,
+        lines: [
+          { accountCode: input.debitAccount, debit: amount, credit: 0 },
+          { accountCode: input.creditAccount, debit: 0, credit: amount },
+        ],
+        status: 'approved',
+        editRequired: false,
+        source: 'manual',
+        createdAt: new Date().toISOString(),
+      }
+      const errors = validateEntry(entry)
+      if (input.debitAccount === input.creditAccount) {
+        errors.push('Debit and credit accounts must differ')
+      }
+      if (!(amount > 0)) errors.push('Amount must be greater than zero')
+      if (errors.length) return { errors }
+      entriesRef.current = [entry, ...entriesRef.current]
+      setEntries((prev) => [entry, ...prev])
+      return { errors: [], entryId: entry.id }
+    },
+    [],
+  )
+
   const value = useMemo(
     () => ({
       documents,
@@ -405,6 +454,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       approveEntry,
       deleteEntry,
       addManualEntry,
+      postSimpleEntry,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,
@@ -427,6 +477,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       approveEntry,
       deleteEntry,
       addManualEntry,
+      postSimpleEntry,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,

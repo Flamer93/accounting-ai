@@ -1,24 +1,27 @@
 import { Link } from 'react-router-dom'
+import { useApp } from '../AppContext'
 
 export function Home() {
+  const { settings } = useApp()
   return (
-    <section className="hero" aria-label="Receipt Ledger">
+    <section className="hero" aria-label="Company books">
       <div className="hero-copy">
-        <div className="brand">Receipt Ledger</div>
-        <h1>Turn receipt photos into a living set of books.</h1>
+        <div className="brand">{settings.companyName}</div>
+        <h1>One journal. Every statement updates.</h1>
         <p>
-          Path: Documents extract → Journal <strong>Approve &amp; post</strong> → ledger, T-accounts,
-          trial balance, balance sheet, and income statement. Drafts stay off the books until posted.
+          Enter a balanced entry in the <strong>Journal</strong>, or post from Ledger, T-Accounts, or
+          Trial Balance. Income Statement and Balance Sheet recompute from the same books. AI receipt
+          extract is parked under Settings → Advanced.
         </p>
         <div className="cta-row">
-          <Link className="btn" to="/documents">
-            Open documents
+          <Link className="btn" to="/journal">
+            Open journal
           </Link>
-          <Link className="btn secondary" to="/journal">
-            Approve journal
+          <Link className="btn secondary" to="/trial-balance">
+            Trial balance
           </Link>
           <Link className="btn ghost" to="/income-statement">
-            View statements
+            Income statement
           </Link>
         </div>
       </div>

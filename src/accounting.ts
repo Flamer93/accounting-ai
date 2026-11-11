@@ -235,3 +235,30 @@ export function formatMoney(n: number): string {
     currency: 'USD',
   }).format(n)
 }
+
+/** Stable journal references J1, J2… by approved chronological order. */
+export function journalRefMap(entries: JournalEntry[], period?: PeriodFilter): Map<string, string> {
+  const approved = approvedEntries(entries, period)
+  const map = new Map<string, string>()
+  approved.forEach((entry, idx) => {
+    map.set(entry.id, `J${idx + 1}`)
+  })
+  return map
+}
+
+export function accountTypeLabel(type: AccountType): string {
+  switch (type) {
+    case 'asset':
+      return 'Asset'
+    case 'liability':
+      return 'Liability'
+    case 'equity':
+      return 'Equity'
+    case 'revenue':
+      return 'Revenue'
+    case 'expense':
+      return 'Expense'
+    default:
+      return type
+  }
+}

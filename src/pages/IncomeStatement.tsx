@@ -1,7 +1,10 @@
-import { buildIncomeStatement, formatMoney } from '../accounting'
-import { BooksPostingHint } from '../components/BooksPostingHint'
+import { Link } from 'react-router-dom'
+import { buildIncomeStatement } from '../accounting'
 import { PeriodControls } from '../components/PeriodControls'
+import { PostEntryForm } from '../components/PostEntryForm'
+import { StatementHeader } from '../components/StatementHeader'
 import { useApp } from '../AppContext'
+import { formatAmount } from '../moneyFormat'
 
 export function IncomeStatement() {
   const { entries, period } = useApp()
@@ -12,76 +15,99 @@ export function IncomeStatement() {
       <div className="page-head">
         <div>
           <h1>Income Statement</h1>
-          <p>Revenue and expenses for the selected period (approved entries only).</p>
+          <p>
+            Formatted report from approved books. Optional post below adds revenue or expense via a
+            journal entry (credit revenue / debit expense vs Cash).
+          </p>
         </div>
         <PeriodControls />
       </div>
 
-      <BooksPostingHint compact />
+      <div className="panel" style={{ marginBottom: '1rem' }}>
+        <PostEntryForm
+          title="Add income-statement activity (posts journal entry)"
+          defaultDebit="5300"
+          defaultCredit="1000"
+          compact
+        />
+        <p className="muted" style={{ marginTop: '0.5rem' }}>
+          Tip: debit an expense &amp; credit Cash for costs; debit Cash &amp; credit Service Revenue for
+          income. Or edit freely in the <Link to="/journal">Journal</Link>.
+        </p>
+      </div>
 
-      <div className="panel">
-        <div className="statement-block">
-          <h2>Revenue</h2>
-          <div className="table-wrap">
-            <table className="ledger">
-              <tbody>
-                {statement.revenue.rows.map((row) => (
-                  <tr key={row.code}>
-                    <td>
-                      {row.code} · {row.name}
-                    </td>
-                    <td className="num">{formatMoney(row.amount)}</td>
-                  </tr>
-                ))}
-                {!statement.revenue.rows.length && (
-                  <tr>
-                    <td colSpan={2} className="muted">
-                      No revenue posted
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="total-row">
-            <span>Total revenue</span>
-            <span>{formatMoney(statement.revenue.total)}</span>
-          </div>
-        </div>
+      <div className="books-sheet is-sheet">
+        <StatementHeader title="Income Statement" variant="green" yearEnded />
+        <table className="is-classic">
+          <tbody>
+            <tr>
+              <td colSpan={3} className="section-label">
+                Revenues
+              </td>
+            </tr>
+            {statement.revenue.rows.map((row, idx) => (
+              <tr key={row.code}>
+                <td className="indent">{row.name}</td>
+                <td className="num inner">
+                  {formatAmount(row.amount, idx === 0)}
+                </td>
+                <td className="num outer" />
+              </tr>
+            ))}
+            {!statement.revenue.rows.length && (
+              <tr>
+                <td className="indent muted" colSpan={3}>
+                  No revenue posted
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td className="indent">Total Revenues:</td>
+              <td className="num inner single-rule" />
+              <td className="num outer">{formatAmount(statement.revenue.total, true)}</td>
+            </tr>
 
-        <div className="statement-block">
-          <h2>Expenses</h2>
-          <div className="table-wrap">
-            <table className="ledger">
-              <tbody>
-                {statement.expenses.rows.map((row) => (
-                  <tr key={row.code}>
-                    <td>
-                      {row.code} · {row.name}
-                    </td>
-                    <td className="num">{formatMoney(row.amount)}</td>
-                  </tr>
-                ))}
-                {!statement.expenses.rows.length && (
-                  <tr>
-                    <td colSpan={2} className="muted">
-                      No expenses posted
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div className="total-row">
-            <span>Total expenses</span>
-            <span>{formatMoney(statement.expenses.total)}</span>
-          </div>
-        </div>
+            <tr>
+              <td colSpan={3} className="section-label">
+                Expenses
+              </td>
+            </tr>
+            {statement.expenses.rows.map((row, idx) => (
+              <tr key={row.code}>
+                <td className="indent">{row.name}</td>
+                <td className="num inner">{formatAmount(row.amount, idx === 0)}</td>
+                <td className="num outer" />
+              </tr>
+            ))}
+            {!statement.expenses.rows.length && (
+              <tr>
+                <td className="indent muted" colSpan={3}>
+                  No expenses posted
+                </td>
+              </tr>
+            )}
+            <tr>
+              <td className="indent">Total Expenses:</td>
+              <td className="num inner single-rule" />
+              <td className="num outer">{formatAmount(statement.expenses.total)}</td>
+            </tr>
 
-        <div className="total-row">
-          <span>Net income</span>
-          <span>{formatMoney(statement.netIncome)}</span>
-        </div>
+            <tr>
+              <td />
+              <td />
+              <td className="num outer single-rule" />
+            </tr>
+            <tr>
+              <td>
+                <strong>Net Income</strong>
+              </td>
+              <td />
+              <td className="num outer double-rule">
+                <strong>{formatAmount(statement.netIncome, true)}</strong>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   )
