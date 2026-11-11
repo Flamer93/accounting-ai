@@ -28,6 +28,7 @@ export function formatLongDate(iso: string): string {
 }
 
 export function formatPeriodHeading(period: { from?: string; to?: string }): string {
+  if (!period.from && !period.to) return ''
   if (period.from && period.to && period.from === period.to) {
     return formatLongDate(period.to)
   }
@@ -36,7 +37,7 @@ export function formatPeriodHeading(period: { from?: string; to?: string }): str
   }
   if (period.to) return `As of ${formatLongDate(period.to)}`
   if (period.from) return `From ${formatLongDate(period.from)}`
-  return 'All periods'
+  return ''
 }
 
 export function formatYearEnded(period: { from?: string; to?: string }): string {

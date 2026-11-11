@@ -119,7 +119,8 @@ export function Journal() {
             {!posted.length && (
               <tr>
                 <td colSpan={5} className="muted">
-                  No posted journal entries in this period. Use Quick post above.
+                  No entries yet. Post above — formats stay blank until you enter real dates and
+                  amounts.
                 </td>
               </tr>
             )}

@@ -48,7 +48,7 @@ export const EXTRACT_FIELD_META: {
 ]
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  companyName: "Paul's Guitar Shop, Inc.",
+  companyName: '',
   nav: {
     journal: true,
     ledger: true,
@@ -90,9 +90,7 @@ export function normalizeSettings(raw: Partial<AppSettings> | null | undefined):
     extractFields.creditAccount = true
   }
   const companyName =
-    typeof raw?.companyName === 'string' && raw.companyName.trim()
-      ? raw.companyName.trim()
-      : DEFAULT_SETTINGS.companyName
+    typeof raw?.companyName === 'string' ? raw.companyName.trim() : DEFAULT_SETTINGS.companyName
   return { companyName, nav, extractFields }
 }
 

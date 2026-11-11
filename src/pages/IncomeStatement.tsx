@@ -54,17 +54,19 @@ export function IncomeStatement() {
                 <td className="num outer" />
               </tr>
             ))}
-            {!statement.revenue.rows.length && (
+                {!statement.revenue.rows.length && (
               <tr>
                 <td className="indent muted" colSpan={3}>
-                  No revenue posted
+                  —
                 </td>
               </tr>
             )}
             <tr>
               <td className="indent">Total Revenues:</td>
               <td className="num inner single-rule" />
-              <td className="num outer">{formatAmount(statement.revenue.total, true)}</td>
+              <td className="num outer">
+                {statement.revenue.rows.length ? formatAmount(statement.revenue.total, true) : '—'}
+              </td>
             </tr>
 
             <tr>
@@ -79,17 +81,19 @@ export function IncomeStatement() {
                 <td className="num outer" />
               </tr>
             ))}
-            {!statement.expenses.rows.length && (
+                {!statement.expenses.rows.length && (
               <tr>
                 <td className="indent muted" colSpan={3}>
-                  No expenses posted
+                  —
                 </td>
               </tr>
             )}
             <tr>
               <td className="indent">Total Expenses:</td>
               <td className="num inner single-rule" />
-              <td className="num outer">{formatAmount(statement.expenses.total)}</td>
+              <td className="num outer">
+                {statement.expenses.rows.length ? formatAmount(statement.expenses.total) : '—'}
+              </td>
             </tr>
 
             <tr>
@@ -103,7 +107,11 @@ export function IncomeStatement() {
               </td>
               <td />
               <td className="num outer double-rule">
-                <strong>{formatAmount(statement.netIncome, true)}</strong>
+                <strong>
+                  {statement.revenue.rows.length || statement.expenses.rows.length
+                    ? formatAmount(statement.netIncome, true)
+                    : '—'}
+                </strong>
               </td>
             </tr>
           </tbody>

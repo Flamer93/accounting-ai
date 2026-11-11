@@ -35,7 +35,7 @@ export function TrialBalance() {
     const debitAccount = adjustSide === 'debit' ? adjustCode : offset
     const creditAccount = adjustSide === 'debit' ? offset : adjustCode
     const result = postSimpleEntry({
-      date: period.to || new Date().toISOString().slice(0, 10),
+      date: period.to || period.from || new Date().toISOString().slice(0, 10),
       memo: `Trial balance adjustment · ${adjustCode}`,
       debitAccount,
       creditAccount,
@@ -163,7 +163,8 @@ export function TrialBalance() {
         </table>
         {!rows.length && (
           <p className="muted" style={{ padding: '1rem' }}>
-            No balances yet. <Link to="/journal">Post in the Journal</Link> first.
+            Empty trial balance — no posted entries yet.{' '}
+            <Link to="/journal">Post in the Journal</Link> to fill this format.
           </p>
         )}
         {rows.length > 0 && totalDebit !== totalCredit && (

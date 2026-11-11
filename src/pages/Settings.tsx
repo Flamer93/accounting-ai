@@ -101,7 +101,7 @@ export function Settings() {
             <input
               value={companyDraft}
               onChange={(e) => setCompanyDraft(e.target.value)}
-              placeholder="Company name"
+              placeholder="[Company Name]"
             />
           </label>
           <button type="submit" className="btn">

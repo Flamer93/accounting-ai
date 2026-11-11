@@ -1,9 +1,9 @@
 import type { DocumentRecord, JournalEntry } from './types'
-import { createSeedData } from './seed'
 
 const DOCS_KEY = 'receipt-ledger:documents'
 const ENTRIES_KEY = 'receipt-ledger:entries'
 const SEEDED_KEY = 'receipt-ledger:seeded'
+const BLANK_TEMPLATE_KEY = 'receipt-ledger:blank-template-v1'
 
 function readJson<T>(key: string, fallback: T): T {
   try {
@@ -19,16 +19,36 @@ function writeJson<T>(key: string, value: T): void {
   localStorage.setItem(key, JSON.stringify(value))
 }
 
-export function ensureSeeded(): void {
-  if (localStorage.getItem(SEEDED_KEY) === '1') return
-  const { documents, entries } = createSeedData()
-  writeJson(DOCS_KEY, documents)
-  writeJson(ENTRIES_KEY, entries)
-  localStorage.setItem(SEEDED_KEY, '1')
+/**
+ * One-time migrate: drop old seed/demo documents & journal entries so the app
+ * opens as a blank books template.
+ */
+export function ensureBlankTemplate(): void {
+  if (localStorage.getItem(BLANK_TEMPLATE_KEY) === '1') return
+  localStorage.removeItem(SEEDED_KEY)
+  writeJson(DOCS_KEY, [])
+  writeJson(ENTRIES_KEY, [])
+  // Clear demo company name if it was the old Paul's Guitar default
+  try {
+    const raw = localStorage.getItem('receipt-ledger:settings')
+    if (raw) {
+      const parsed = JSON.parse(raw) as { companyName?: string }
+      if (
+        typeof parsed.companyName === 'string' &&
+        /paul'?s\s+guitar|apple\s+inc/i.test(parsed.companyName)
+      ) {
+        parsed.companyName = ''
+        localStorage.setItem('receipt-ledger:settings', JSON.stringify(parsed))
+      }
+    }
+  } catch {
+    // ignore
+  }
+  localStorage.setItem(BLANK_TEMPLATE_KEY, '1')
 }
 
 export function loadDocuments(): DocumentRecord[] {
-  ensureSeeded()
+  ensureBlankTemplate()
   return readJson<DocumentRecord[]>(DOCS_KEY, [])
 }
 
@@ -37,7 +57,7 @@ export function saveDocuments(docs: DocumentRecord[]): void {
 }
 
 export function loadEntries(): JournalEntry[] {
-  ensureSeeded()
+  ensureBlankTemplate()
   return readJson<JournalEntry[]>(ENTRIES_KEY, [])
 }
 

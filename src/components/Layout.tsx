@@ -18,9 +18,9 @@ export function Layout() {
       <header className="topbar">
         <div className="brand-lockup">
           <NavLink to="/" className="brand">
-            {settings.companyName || 'Books'}
+            {settings.companyName.trim() || 'Accounting AI'}
           </NavLink>
-          <span className="brand-sub">Enter once — journal, ledger &amp; statements stay in sync</span>
+          <span className="brand-sub">Blank books template — enter once, every statement updates</span>
         </div>
         <nav className="nav" aria-label="Primary">
           {links.map((link) => (

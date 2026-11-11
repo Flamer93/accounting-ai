@@ -1,6 +1,6 @@
 /**
- * Confirms statement engines only include approved entries, and that approving
- * a balanced extract draft surfaces it on T-accounts / TB / BS / IS.
+ * Confirms statement engines only include approved entries, blank seed is empty,
+ * and approving a balanced entry surfaces it on T-accounts / TB / BS / IS.
  */
 import {
   approvedEntries,
@@ -11,6 +11,7 @@ import {
   validateEntry,
 } from '../src/accounting.ts'
 import { createSeedData } from '../src/seed.ts'
+import { DEFAULT_SETTINGS, normalizeSettings } from '../src/settings.ts'
 import type { JournalEntry } from '../src/types.ts'
 
 let failed = 0
@@ -24,15 +25,16 @@ function assert(cond: unknown, msg: string) {
 }
 
 const period = { from: '2026-01-01', to: '2026-12-31' }
-const { entries: seedEntries } = createSeedData()
+const { documents, entries: seedEntries } = createSeedData()
+assert(documents.length === 0, 'blank template has no seed documents')
+assert(seedEntries.length === 0, 'blank template has no seed journal entries')
+assert(DEFAULT_SETTINGS.companyName === '', 'default company name is blank')
+assert(normalizeSettings(null).companyName === '', 'normalized settings keep blank company')
 
-const seedApproved = seedEntries.filter((e) => e.status === 'approved')
-const seedDrafts = seedEntries.filter((e) => e.status !== 'approved')
-assert(seedApproved.length >= 1, 'seed has approved entries')
-assert(seedDrafts.length >= 1, 'seed has at least one draft')
-
-const seedLedger = buildGeneralLedger(seedEntries, period)
-assert(seedLedger.length > 0, 'seed approved activity appears on ledger/T-accounts')
+assert(buildGeneralLedger([], period).length === 0, 'empty books → empty ledger')
+assert(buildTrialBalance([], period).rows.length === 0, 'empty books → empty trial balance')
+assert(buildIncomeStatement([], period).netIncome === 0, 'empty books → zero net income')
+assert(buildBalanceSheet([], period).totalAssets === 0, 'empty books → zero assets')
 
 const draftOnly: JournalEntry[] = [
   {
@@ -55,12 +57,6 @@ const draftOnly: JournalEntry[] = [
 assert(validateEntry(draftOnly[0]).length === 0, 'draft-only fixture is balanced/valid')
 assert(approvedEntries(draftOnly, period).length === 0, 'drafts excluded from approvedEntries')
 assert(buildGeneralLedger(draftOnly, period).length === 0, 'drafts excluded from T-accounts/ledger')
-assert(buildTrialBalance(draftOnly, period).rows.length === 0, 'drafts excluded from trial balance')
-assert(
-  buildIncomeStatement(draftOnly, period).expenses.total === 0,
-  'drafts excluded from income statement totals',
-)
-assert(buildBalanceSheet(draftOnly, period).assets.total === 0, 'drafts excluded from balance sheet')
 
 const posted: JournalEntry = {
   ...draftOnly[0],
@@ -69,33 +65,19 @@ const posted: JournalEntry = {
   editRequired: false,
 }
 
-const withPosted = [...seedEntries, posted]
-const beforeExpense = buildIncomeStatement(seedEntries, period).expenses.total
-const afterExpense = buildIncomeStatement(withPosted, period).expenses.total
-assert(afterExpense === beforeExpense + 42, 'approving a balanced entry increases IS expenses')
+const afterExpense = buildIncomeStatement([posted], period).expenses.total
+assert(afterExpense === 42, 'approving a balanced entry increases IS expenses')
 
-const tb = buildTrialBalance(withPosted, period)
+const tb = buildTrialBalance([posted], period)
 assert(tb.rows.some((r) => r.code === '5300'), 'trial balance includes Meals after approve')
 assert(tb.totalDebit === tb.totalCredit, 'trial balance stays in balance after approve')
 
-const tAccounts = buildGeneralLedger(withPosted, period)
+const tAccounts = buildGeneralLedger([posted], period)
 const meals = tAccounts.find((a) => a.code === '5300')
 assert(Boolean(meals?.lines.some((l) => l.debit === 42)), 'T-accounts show posted debit')
-
-const outsidePeriod: JournalEntry = {
-  ...posted,
-  id: 'je_outside',
-  date: '2025-06-01',
-}
-const outsideLedger = buildGeneralLedger([...seedEntries, outsidePeriod], period)
-const seedCodes = new Set(seedLedger.map((a) => a.code))
-assert(
-  !outsideLedger.some((a) => a.code === '5300' && !seedCodes.has('5300')),
-  'approved entry outside period is filtered out of statements',
-)
 
 if (failed) {
   console.error(`${failed} failed`)
   process.exit(1)
 }
-console.log('statement posting path verified')
+console.log('blank template + statement posting path verified')

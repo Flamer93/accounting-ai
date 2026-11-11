@@ -27,7 +27,7 @@ export function PostEntryForm({
   onPosted,
 }: Props) {
   const { postSimpleEntry, period } = useApp()
-  const [date, setDate] = useState(period.to || new Date().toISOString().slice(0, 10))
+  const [date, setDate] = useState(period.to || period.from || '')
   const [memo, setMemo] = useState('')
   const [debitAccount, setDebitAccount] = useState(defaultDebit)
   const [creditAccount, setCreditAccount] = useState(defaultCredit)

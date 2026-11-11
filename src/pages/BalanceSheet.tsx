@@ -45,9 +45,17 @@ export function BalanceSheet() {
                 <td className="num">{formatAmount(row.amount, idx === 0)}</td>
               </tr>
             ))}
+            {!sheet.assets.rows.length && (
+              <tr>
+                <td className="indent muted">—</td>
+                <td className="num muted">—</td>
+              </tr>
+            )}
             <tr className="subtotal">
               <td>Total assets</td>
-              <td className="num double-rule">{formatAmount(sheet.totalAssets, true)}</td>
+              <td className="num double-rule">
+                {sheet.assets.rows.length ? formatAmount(sheet.totalAssets, true) : '—'}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -66,10 +74,16 @@ export function BalanceSheet() {
                 <td className="num">{formatAmount(row.amount, idx === 0)}</td>
               </tr>
             ))}
+            {!sheet.liabilities.rows.length && (
+              <tr>
+                <td className="indent muted">—</td>
+                <td className="num muted">—</td>
+              </tr>
+            )}
             <tr className="subtotal">
               <td className="indent">Total liabilities</td>
               <td className="num single-rule-above">
-                {formatAmount(sheet.liabilities.total, true)}
+                {sheet.liabilities.rows.length ? formatAmount(sheet.liabilities.total, true) : '—'}
               </td>
             </tr>
             <tr>
@@ -83,25 +97,38 @@ export function BalanceSheet() {
                 <td className="num">{formatAmount(row.amount, idx === 0)}</td>
               </tr>
             ))}
+            {!sheet.equity.rows.length && (
+              <tr>
+                <td className="indent muted">—</td>
+                <td className="num muted">—</td>
+              </tr>
+            )}
             <tr className="subtotal">
               <td className="indent">Total shareholders&apos; equity</td>
-              <td className="num single-rule-above">{formatAmount(sheet.equity.total)}</td>
+              <td className="num single-rule-above">
+                {sheet.equity.rows.length ? formatAmount(sheet.equity.total) : '—'}
+              </td>
             </tr>
             <tr className="grand">
               <td>Total liabilities and shareholders&apos; equity</td>
               <td className="num double-rule">
-                {formatAmount(sheet.totalLiabilitiesAndEquity, true)}
+                {sheet.assets.rows.length || sheet.liabilities.rows.length || sheet.equity.rows.length
+                  ? formatAmount(sheet.totalLiabilitiesAndEquity, true)
+                  : '—'}
               </td>
             </tr>
           </tbody>
         </table>
 
-        {sheet.totalAssets !== sheet.totalLiabilitiesAndEquity && (
-          <p className="error" style={{ padding: '0.75rem 1rem' }}>
-            Imbalance: assets {formatAmount(sheet.totalAssets, true)} vs L+E{' '}
-            {formatAmount(sheet.totalLiabilitiesAndEquity, true)}.
-          </p>
-        )}
+        {(sheet.assets.rows.length ||
+          sheet.liabilities.rows.length ||
+          sheet.equity.rows.length) &&
+          sheet.totalAssets !== sheet.totalLiabilitiesAndEquity && (
+            <p className="error" style={{ padding: '0.75rem 1rem' }}>
+              Imbalance: assets {formatAmount(sheet.totalAssets, true)} vs L+E{' '}
+              {formatAmount(sheet.totalLiabilitiesAndEquity, true)}.
+            </p>
+          )}
       </div>
     </div>
   )

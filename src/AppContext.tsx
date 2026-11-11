@@ -123,7 +123,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_BOOT_SETTINGS)
-  const [period, setPeriod] = useState<PeriodFilter>({ from: '2026-01-01', to: '2026-12-31' })
+  const [period, setPeriod] = useState<PeriodFilter>({})
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
   const [googleKeySaved, setGoogleKeySaved] = useState(false)
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false)

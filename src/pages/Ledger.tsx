@@ -57,10 +57,14 @@ export function Ledger() {
             <strong>Account number:</strong> {account?.code || '—'}
           </div>
           <div className="ledger-period">
-            Journal Period: {period.from?.slice(0, 4) || '—'}
-            {period.to && period.to.slice(0, 4) !== period.from?.slice(0, 4)
-              ? `–${period.to.slice(0, 4)}`
-              : ''}
+            Journal Period:{' '}
+            {period.from || period.to
+              ? `${period.from?.slice(0, 4) || '…'}${
+                  period.to && period.to.slice(0, 4) !== period.from?.slice(0, 4)
+                    ? `–${period.to.slice(0, 4)}`
+                    : ''
+                }`
+              : '—'}
           </div>
         </div>
 

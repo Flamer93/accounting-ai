@@ -105,7 +105,10 @@ export function TAccounts() {
       </div>
       {!ledger.length && (
         <div className="panel">
-          <p className="muted">No posted activity yet. Post an entry above or in the Journal.</p>
+          <p className="muted">
+            No T-accounts yet. Post an entry above or in the Journal — accounts appear as you enter
+            them.
+          </p>
         </div>
       )}
     </div>

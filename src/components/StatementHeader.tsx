@@ -3,13 +3,15 @@ import { formatLongDate, formatPeriodHeading, formatYearEnded } from '../moneyFo
 
 interface Props {
   title: string
-  /** Paul's Guitar green block vs Apple muted/centered vs ledger green band. */
+  /** Green block vs Apple muted/centered vs ledger green band vs plain journal. */
   variant?: 'green' | 'apple' | 'ledger' | 'plain'
-  /** Use "For the Year Ended …" wording when true. */
+  /** Use "For the Year Ended …" wording when a period end is set. */
   yearEnded?: boolean
-  /** Show a single as-of date (balance sheet / trial balance). */
+  /** Show a single as-of date when period.to is set. */
   asOf?: boolean
 }
+
+const COMPANY_PLACEHOLDER = '[Company Name]'
 
 export function StatementHeader({
   title,
@@ -18,18 +20,22 @@ export function StatementHeader({
   asOf = false,
 }: Props) {
   const { settings, period } = useApp()
-  const company = settings.companyName || 'Company'
+  const company = settings.companyName.trim() || COMPANY_PLACEHOLDER
+  const hasPeriod = Boolean(period.from || period.to)
 
-  let periodLabel = formatPeriodHeading(period)
-  if (yearEnded) periodLabel = formatYearEnded(period)
-  if (asOf && period.to) periodLabel = formatLongDate(period.to)
+  let periodLabel = ''
+  if (hasPeriod) {
+    periodLabel = formatPeriodHeading(period)
+    if (yearEnded && period.to) periodLabel = formatYearEnded(period)
+    if (asOf && period.to) periodLabel = formatLongDate(period.to)
+  }
 
   if (variant === 'apple') {
     return (
       <header className="stmt-head apple">
         <div className="stmt-company">{company}</div>
         <div className="stmt-title">{title.toUpperCase()}</div>
-        <div className="stmt-period muted-italic">{periodLabel}</div>
+        {periodLabel ? <div className="stmt-period muted-italic">{periodLabel}</div> : null}
       </header>
     )
   }
@@ -46,7 +52,9 @@ export function StatementHeader({
   if (variant === 'plain') {
     return (
       <header className="stmt-head plain">
-        <div className="stmt-company">{company}&apos;s Journal</div>
+        <div className="stmt-company">
+          {settings.companyName.trim() ? `${company}'s Journal` : 'General Journal'}
+        </div>
       </header>
     )
   }
@@ -55,7 +63,7 @@ export function StatementHeader({
     <header className="stmt-head green-block">
       <div className="stmt-company">{company}</div>
       <div className="stmt-title">{title}</div>
-      <div className="stmt-period">{periodLabel}</div>
+      {periodLabel ? <div className="stmt-period">{periodLabel}</div> : null}
     </header>
   )
 }
