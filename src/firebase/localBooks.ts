@@ -7,7 +7,7 @@ function booksKey(uid: string): string {
   return `receipt-ledger:user:${uid}:books`
 }
 
-/** Per-user localStorage books for mock-auth / offline fallback — never shared across uids. */
+/** Per-user localStorage books (local single-user / offline) — never shared across uids. */
 export function loadLocalUserBooks(uid: string): UserBooks {
   try {
     const raw = localStorage.getItem(booksKey(uid))

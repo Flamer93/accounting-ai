@@ -2,7 +2,6 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from './AppContext'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './firebase/AuthContext'
-import { AuthPage } from './pages/AuthPage'
 import { BalanceSheet } from './pages/BalanceSheet'
 import { Documents } from './pages/Documents'
 import { GuardedView } from './pages/GuardedView'
@@ -14,22 +13,8 @@ import { Settings } from './pages/Settings'
 import { TAccounts } from './pages/TAccounts'
 import { TrialBalance } from './pages/TrialBalance'
 
-function LoadingScreen() {
-  return (
-    <div className="auth-shell">
-      <div className="panel auth-card">
-        <p className="auth-brand">Accounting AI</p>
-        <p className="muted">Checking sign-in…</p>
-      </div>
-    </div>
-  )
-}
-
 function AuthenticatedApp() {
-  const { loading, user, mode, firestore } = useAuth()
-
-  if (loading) return <LoadingScreen />
-  if (!user) return <AuthPage />
+  const { user, mode, firestore } = useAuth()
 
   return (
     <AppProvider key={user.uid} userId={user.uid} authMode={mode} firestore={firestore}>
