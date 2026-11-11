@@ -1,4 +1,4 @@
-import { accountByCode, CHART_OF_ACCOUNTS } from './chartOfAccounts'
+import { accountByCode, accountLabel, getChartOfAccounts } from './chartOfAccounts'
 import type { AccountType, JournalEntry, JournalLine, PeriodFilter } from './types'
 
 export function roundMoney(n: number): number {
@@ -22,11 +22,12 @@ export function isBalanced(lines: JournalLine[]): boolean {
 
 export function validateEntry(entry: Pick<JournalEntry, 'date' | 'lines'>): string[] {
   const errors: string[] = []
+  const chart = getChartOfAccounts()
   if (!entry.date) errors.push('Date is required')
   if (!entry.lines.length) errors.push('At least one line is required')
   for (const line of entry.lines) {
-    if (!accountByCode(line.accountCode)) {
-      errors.push(`Unknown account ${line.accountCode}`)
+    if (!accountByCode(line.accountCode, chart)) {
+      errors.push(`Unknown account ${accountLabel(line.accountCode, chart)}`)
     }
     if ((line.debit || 0) < 0 || (line.credit || 0) < 0) {
       errors.push('Amounts cannot be negative')
@@ -81,7 +82,7 @@ export function buildGeneralLedger(entries: JournalEntry[], period?: PeriodFilte
   const approved = approvedEntries(entries, period)
   const map = new Map<string, LedgerAccount>()
 
-  for (const account of CHART_OF_ACCOUNTS) {
+  for (const account of getChartOfAccounts()) {
     map.set(account.code, {
       code: account.code,
       name: account.name,

@@ -1,18 +1,20 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
-import { CHART_OF_ACCOUNTS } from '../chartOfAccounts'
-import type { AccountType } from '../types'
+import type { Account } from '../types'
 
 interface Props {
   /** Pre-select debit account (e.g. when posting from a T-account / ledger). */
   defaultDebit?: string
   /** Pre-select credit account. */
   defaultCredit?: string
-  /** Prefer accounts of this type on the “focus” side. */
-  focusType?: AccountType
   title?: string
   compact?: boolean
   onPosted?: (entryId: string) => void
+}
+
+function resolveCode(accounts: Account[], preferred?: string): string {
+  if (preferred && accounts.some((a) => a.code === preferred)) return preferred
+  return accounts[0]?.code || ''
 }
 
 /**
@@ -20,25 +22,36 @@ interface Props {
  * Journal, Ledger, T-accounts, Trial Balance, IS, and BS all recompute.
  */
 export function PostEntryForm({
-  defaultDebit = '5200',
-  defaultCredit = '1000',
+  defaultDebit,
+  defaultCredit,
   title = 'Post a journal entry',
   compact = false,
   onPosted,
 }: Props) {
-  const { postSimpleEntry, period } = useApp()
+  const { postSimpleEntry, period, accounts } = useApp()
   const [date, setDate] = useState(period.to || period.from || '')
   const [memo, setMemo] = useState('')
-  const [debitAccount, setDebitAccount] = useState(defaultDebit)
-  const [creditAccount, setCreditAccount] = useState(defaultCredit)
+  const [debitAccount, setDebitAccount] = useState(() => resolveCode(accounts, defaultDebit || '5200'))
+  const [creditAccount, setCreditAccount] = useState(() =>
+    resolveCode(accounts, defaultCredit || '1000'),
+  )
   const [amount, setAmount] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [ok, setOk] = useState<string | null>(null)
+
+  useEffect(() => {
+    setDebitAccount((prev) => resolveCode(accounts, prev || defaultDebit || '5200'))
+    setCreditAccount((prev) => resolveCode(accounts, prev || defaultCredit || '1000'))
+  }, [accounts, defaultDebit, defaultCredit])
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()
     setError(null)
     setOk(null)
+    if (!accounts.length) {
+      setError('Add accounts in Settings before posting.')
+      return
+    }
     const result = postSimpleEntry({
       date,
       memo: memo || 'Manual entry',
@@ -80,8 +93,8 @@ export function PostEntryForm({
         </label>
         <label className="field">
           <span>Debit account</span>
-          <select value={debitAccount} onChange={(e) => setDebitAccount(e.target.value)}>
-            {CHART_OF_ACCOUNTS.map((a) => (
+          <select value={debitAccount} onChange={(e) => setDebitAccount(e.target.value)} required>
+            {accounts.map((a) => (
               <option key={a.code} value={a.code}>
                 {a.name}
               </option>
@@ -90,8 +103,8 @@ export function PostEntryForm({
         </label>
         <label className="field">
           <span>Credit account</span>
-          <select value={creditAccount} onChange={(e) => setCreditAccount(e.target.value)}>
-            {CHART_OF_ACCOUNTS.map((a) => (
+          <select value={creditAccount} onChange={(e) => setCreditAccount(e.target.value)} required>
+            {accounts.map((a) => (
               <option key={a.code} value={a.code}>
                 {a.name}
               </option>
@@ -108,7 +121,7 @@ export function PostEntryForm({
         </label>
       </div>
       <div className="cta-row">
-        <button className="btn" type="submit">
+        <button className="btn" type="submit" disabled={accounts.length < 2}>
           Post to books
         </button>
         {ok && <span className="badge ok">{ok}</span>}

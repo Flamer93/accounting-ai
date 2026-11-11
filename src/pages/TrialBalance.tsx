@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { buildTrialBalance } from '../accounting'
-import { CHART_OF_ACCOUNTS } from '../chartOfAccounts'
+import { accountLabel } from '../chartOfAccounts'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -13,13 +13,20 @@ import { formatAmount } from '../moneyFormat'
  * journal entry (selected account vs offset) so the books stay double-entry.
  */
 export function TrialBalance() {
-  const { entries, period, postSimpleEntry } = useApp()
+  const { entries, period, postSimpleEntry, accounts } = useApp()
   const { rows, totalDebit, totalCredit } = buildTrialBalance(entries, period)
   const [adjustCode, setAdjustCode] = useState('')
   const [adjustSide, setAdjustSide] = useState<'debit' | 'credit'>('debit')
   const [adjustAmount, setAdjustAmount] = useState('')
-  const [offset, setOffset] = useState('1000')
+  const [offset, setOffset] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!offset || !accounts.some((a) => a.code === offset)) {
+      const cash = accounts.find((a) => a.name === 'Cash')?.code || accounts[0]?.code || ''
+      setOffset(cash)
+    }
+  }, [accounts, offset])
 
   function applyAdjust() {
     setMsg(null)
@@ -36,7 +43,7 @@ export function TrialBalance() {
     const creditAccount = adjustSide === 'debit' ? offset : adjustCode
     const result = postSimpleEntry({
       date: period.to || period.from || new Date().toISOString().slice(0, 10),
-      memo: `Trial balance adjustment · ${adjustCode}`,
+      memo: `Trial balance adjustment · ${accountLabel(adjustCode, accounts)}`,
       debitAccount,
       creditAccount,
       amount,
@@ -74,7 +81,7 @@ export function TrialBalance() {
               <span>Account</span>
               <select value={adjustCode} onChange={(e) => setAdjustCode(e.target.value)}>
                 <option value="">Select…</option>
-                {CHART_OF_ACCOUNTS.map((a) => (
+                {accounts.map((a) => (
                   <option key={a.code} value={a.code}>
                     {a.name}
                   </option>
@@ -104,7 +111,7 @@ export function TrialBalance() {
             <label className="field">
               <span>Offset account</span>
               <select value={offset} onChange={(e) => setOffset(e.target.value)}>
-                {CHART_OF_ACCOUNTS.map((a) => (
+                {accounts.map((a) => (
                   <option key={a.code} value={a.code}>
                     {a.name}
                   </option>

@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
+import { AccountsManager } from '../components/AccountsManager'
 import {
   EXTRACT_FIELD_META,
   NAV_VIEW_META,
@@ -89,7 +90,10 @@ export function Settings() {
       <div className="page-head">
         <div>
           <h1>Settings</h1>
-          <p>Company name and statement navigation. AI extract is unused for now (Advanced).</p>
+          <p>
+            Company name, chart of accounts, and statement navigation. AI extract is unused for now
+            (Advanced).
+          </p>
         </div>
       </div>
 
@@ -115,8 +119,17 @@ export function Settings() {
       </div>
 
       <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
+        <h2>Chart of accounts</h2>
+        <AccountsManager />
+      </div>
+
+      <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
         <h2>How to enter data</h2>
         <ul className="howto-list">
+          <li>
+            <strong>Accounts</strong> — manage above; add/delete names shared by every journal and
+            statement form.
+          </li>
           <li>
             <strong>Journal</strong> — primary editable entry (quick post or classic draft).
           </li>

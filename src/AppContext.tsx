@@ -10,6 +10,14 @@ import {
 } from 'react'
 import { validateEntry } from './accounting'
 import { apiFetch } from './apiClient'
+import {
+  accountLabel,
+  accountsSorted,
+  loadAccounts,
+  nextAccountCode,
+  saveAccounts,
+  setChartOfAccounts,
+} from './chartOfAccounts'
 import { cascadeRemoveDocument } from './documentCascade'
 import {
   clearGoogleApiKey,
@@ -38,17 +46,23 @@ import {
   saveEntries,
   uid,
 } from './storage'
-import type { DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
+import type { Account, AccountType, DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
 
 export type ExtractProvider = 'google' | 'openai' | 'mock' | null
 
 interface AppState {
   documents: DocumentRecord[]
   entries: JournalEntry[]
+  accounts: Account[]
   period: PeriodFilter
   settings: AppSettings
   setPeriod: (period: PeriodFilter) => void
   updateSettings: (next: AppSettings) => void
+  addAccount: (input: { name: string; type: AccountType }) => { errors: string[]; account?: Account }
+  deleteAccount: (
+    code: string,
+    opts?: { force?: boolean },
+  ) => { errors: string[]; blocked?: boolean; usageCount?: number }
   addDocument: (file: File, dataUrl: string) => DocumentRecord
   extractDocument: (documentId: string) => Promise<ExtractOutcome>
   deleteDocument: (documentId: string) => void
@@ -119,9 +133,27 @@ export type ExtractOutcome = {
   warning?: string
 }
 
+function countAccountUsage(entries: JournalEntry[], code: string): number {
+  let n = 0
+  for (const entry of entries) {
+    for (const line of entry.lines) {
+      if (line.accountCode === code) n += 1
+    }
+  }
+  return n
+}
+
+function pickDefaultAccount(accounts: Account[], preferredCodes: string[]): string {
+  for (const code of preferredCodes) {
+    if (accounts.some((a) => a.code === code)) return code
+  }
+  return accounts[0]?.code || ''
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [accounts, setAccounts] = useState<Account[]>([])
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_BOOT_SETTINGS)
   const [period, setPeriod] = useState<PeriodFilter>({})
   const [openaiConfigured, setOpenaiConfigured] = useState<boolean | null>(null)
@@ -131,6 +163,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
   const settingsRef = useRef(settings)
+  const accountsRef = useRef(accounts)
 
   useEffect(() => {
     documentsRef.current = documents
@@ -145,8 +178,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [settings])
 
   useEffect(() => {
+    accountsRef.current = accounts
+    setChartOfAccounts(accounts)
+  }, [accounts])
+
+  useEffect(() => {
     setDocuments(loadDocuments())
     setEntries(loadEntries())
+    setAccounts(loadAccounts())
     setSettings(loadSettings())
     setGoogleKeySaved(hasGoogleApiKey())
     setOpenaiKeySaved(hasOpenAiApiKey())
@@ -176,6 +215,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!ready) return
     saveSettings(settings)
   }, [settings, ready])
+
+  useEffect(() => {
+    if (!ready) return
+    saveAccounts(accounts)
+  }, [accounts, ready])
 
   const updateSettings = useCallback((next: AppSettings) => {
     const normalized = normalizeSettings(next)
@@ -379,16 +423,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setEntries(next.entries)
   }, [])
 
+  const addAccount = useCallback((input: { name: string; type: AccountType }) => {
+    const name = input.name.trim()
+    if (!name) return { errors: ['Account name is required'] }
+    const existing = accountsRef.current
+    if (existing.some((a) => a.name.toLowerCase() === name.toLowerCase())) {
+      return { errors: [`An account named “${name}” already exists`] }
+    }
+    const account: Account = {
+      code: nextAccountCode(input.type, existing),
+      name,
+      type: input.type,
+    }
+    const next = accountsSorted([...existing, account])
+    accountsRef.current = next
+    setChartOfAccounts(next)
+    setAccounts(next)
+    return { errors: [], account }
+  }, [])
+
+  const deleteAccount = useCallback((code: string, opts?: { force?: boolean }) => {
+    const existing = accountsRef.current
+    const account = existing.find((a) => a.code === code)
+    if (!account) return { errors: ['Account not found'] }
+    const usageCount = countAccountUsage(entriesRef.current, code)
+    if (usageCount > 0 && !opts?.force) {
+      return {
+        errors: [
+          `“${accountLabel(code, existing)}” is used on ${usageCount} journal line${usageCount === 1 ? '' : 's'}. Delete those entries first, or force-remove.`,
+        ],
+        blocked: true,
+        usageCount,
+      }
+    }
+    if (existing.length <= 2) {
+      return { errors: ['Keep at least two accounts so you can post double-entry.'] }
+    }
+    const next = existing.filter((a) => a.code !== code)
+    accountsRef.current = next
+    setChartOfAccounts(next)
+    setAccounts(next)
+    return { errors: [], usageCount }
+  }, [])
+
   const addManualEntry = useCallback(() => {
     const id = uid('je')
     const fields = settingsRef.current.extractFields
+    const chart = accountsRef.current
+    const debit = pickDefaultAccount(chart, ['5200', '5000'])
+    const credit = pickDefaultAccount(chart, ['1000', '2000'])
     const entry: JournalEntry = {
       id,
       date: new Date().toISOString().slice(0, 10),
       memo: '',
       lines: [
-        { accountCode: '5200', debit: 0, credit: 0 },
-        { accountCode: '1000', debit: 0, credit: 0 },
+        { accountCode: debit, debit: 0, credit: 0 },
+        { accountCode: credit, debit: 0, credit: 0 },
       ],
       status: 'draft',
       editRequired: true,
@@ -443,10 +533,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     () => ({
       documents,
       entries,
+      accounts,
       period,
       settings,
       setPeriod,
       updateSettings,
+      addAccount,
+      deleteAccount,
       addDocument,
       extractDocument,
       deleteDocument,
@@ -467,9 +560,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [
       documents,
       entries,
+      accounts,
       period,
       settings,
       updateSettings,
+      addAccount,
+      deleteAccount,
       addDocument,
       extractDocument,
       deleteDocument,

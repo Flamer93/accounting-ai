@@ -1,6 +1,6 @@
-import type { Account } from './types'
+import type { Account, AccountType } from './types'
 
-export const CHART_OF_ACCOUNTS: Account[] = [
+export const DEFAULT_CHART_OF_ACCOUNTS: Account[] = [
   { code: '1000', name: 'Cash', type: 'asset' },
   { code: '1100', name: 'Accounts Receivable', type: 'asset' },
   { code: '1500', name: 'Equipment', type: 'asset' },
@@ -16,11 +16,105 @@ export const CHART_OF_ACCOUNTS: Account[] = [
   { code: '5500', name: 'Software Expense', type: 'expense' },
 ]
 
-export const accountByCode = (code: string): Account | undefined =>
-  CHART_OF_ACCOUNTS.find((a) => a.code === code)
+/** @deprecated Prefer getChartOfAccounts() — kept as alias for default list. */
+export const CHART_OF_ACCOUNTS = DEFAULT_CHART_OF_ACCOUNTS
+
+const ACCOUNTS_KEY = 'receipt-ledger:accounts'
+
+let liveChart: Account[] = [...DEFAULT_CHART_OF_ACCOUNTS]
+
+export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  asset: 'Asset',
+  liability: 'Liability',
+  equity: 'Equity',
+  revenue: 'Revenue',
+  expense: 'Expense',
+}
+
+export function getChartOfAccounts(): Account[] {
+  return liveChart
+}
+
+export function setChartOfAccounts(accounts: Account[]): void {
+  liveChart = normalizeAccounts(accounts)
+}
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return fallback
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
+  }
+}
+
+export function normalizeAccounts(raw: unknown): Account[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return DEFAULT_CHART_OF_ACCOUNTS.map((a) => ({ ...a }))
+  }
+  const out: Account[] = []
+  const seen = new Set<string>()
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const rec = row as Record<string, unknown>
+    const code = String(rec.code || '').trim()
+    const name = String(rec.name || '').trim()
+    const type = String(rec.type || '').trim() as AccountType
+    if (!code || !name) continue
+    if (!['asset', 'liability', 'equity', 'revenue', 'expense'].includes(type)) continue
+    if (seen.has(code)) continue
+    seen.add(code)
+    out.push({ code, name, type })
+  }
+  return out.length ? out : DEFAULT_CHART_OF_ACCOUNTS.map((a) => ({ ...a }))
+}
+
+export function loadAccounts(): Account[] {
+  const loaded = normalizeAccounts(readJson<unknown>(ACCOUNTS_KEY, null))
+  liveChart = loaded
+  return loaded.map((a) => ({ ...a }))
+}
+
+export function saveAccounts(accounts: Account[]): void {
+  const normalized = normalizeAccounts(accounts)
+  liveChart = normalized
+  localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(normalized))
+}
+
+export function accountByCode(code: string, chart = liveChart): Account | undefined {
+  return chart.find((a) => a.code === code)
+}
 
 /** User-facing account name only (codes stay on the value / for posting). */
-export const accountLabel = (code: string): string => {
-  const account = accountByCode(code)
+export function accountLabel(code: string, chart = liveChart): string {
+  const account = accountByCode(code, chart)
   return account ? account.name : code
+}
+
+const TYPE_CODE_BASE: Record<AccountType, number> = {
+  asset: 1000,
+  liability: 2000,
+  equity: 3000,
+  revenue: 4000,
+  expense: 5000,
+}
+
+/** Generate next free internal code in the type's thousand range. */
+export function nextAccountCode(type: AccountType, chart: Account[] = liveChart): string {
+  const base = TYPE_CODE_BASE[type]
+  const used = new Set(chart.map((a) => a.code))
+  for (let n = base; n < base + 1000; n += 10) {
+    const code = String(n)
+    if (!used.has(code)) return code
+  }
+  for (let n = base; n < base + 1000; n++) {
+    const code = String(n)
+    if (!used.has(code)) return code
+  }
+  return `${base}_${crypto.randomUUID().slice(0, 4)}`
+}
+
+export function accountsSorted(chart: Account[] = liveChart): Account[] {
+  return [...chart].sort((a, b) => a.code.localeCompare(b.code) || a.name.localeCompare(b.name))
 }
