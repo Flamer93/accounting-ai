@@ -9,12 +9,13 @@ import {
   useState,
   type ReactNode,
 } from 'react'
-import { validateEntry } from './accounting'
+import { buildOpeningBalanceLines, validateEntry, type OpeningBalanceAmount } from './accounting'
 import { apiFetch } from './apiClient'
 import {
   accountLabel,
   accountsSorted,
   DEFAULT_CHART_OF_ACCOUNTS,
+  ensureOpeningBalanceEquity,
   nextAccountCode,
   setChartOfAccounts,
 } from './chartOfAccounts'
@@ -77,6 +78,17 @@ interface AppState {
     creditAccount: string
     amount: number
     vendor?: string
+  }) => { errors: string[]; entryId?: string }
+  /**
+   * Post a balanced opening-balances journal entry (normal-side amounts + Opening Balance Equity plug).
+   * Optionally clear the journal first and/or set the period From date.
+   */
+  postOpeningBalances: (input: {
+    date: string
+    memo?: string
+    amounts: OpeningBalanceAmount[]
+    clearJournalFirst?: boolean
+    setPeriodFrom?: boolean
   }) => { errors: string[]; entryId?: string }
   /** Wipe all journal entries and documents; statements go empty. Keeps accounts & company. */
   clearJournal: () => void
@@ -647,6 +659,64 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     [],
   )
 
+  const postOpeningBalances = useCallback(
+    (input: {
+      date: string
+      memo?: string
+      amounts: OpeningBalanceAmount[]
+      clearJournalFirst?: boolean
+      setPeriodFrom?: boolean
+    }) => {
+      if (!input.date) return { errors: ['Date is required'] }
+
+      const ensured = ensureOpeningBalanceEquity(accountsRef.current)
+      if (ensured.created) {
+        accountsRef.current = ensured.accounts
+        setChartOfAccounts(ensured.accounts)
+        setAccounts(ensured.accounts)
+      }
+
+      const { lines, errors: lineErrors } = buildOpeningBalanceLines(
+        input.amounts,
+        accountsRef.current,
+        ensured.account.code,
+      )
+      if (lineErrors.length) return { errors: lineErrors }
+
+      const entry: JournalEntry = {
+        id: uid('je'),
+        date: input.date,
+        memo: (input.memo || '').trim() || 'Opening balances',
+        lines,
+        status: 'approved',
+        editRequired: false,
+        source: 'opening',
+        createdAt: new Date().toISOString(),
+      }
+      const errors = validateEntry(entry)
+      if (errors.length) return { errors }
+
+      if (input.clearJournalFirst) {
+        documentsRef.current = []
+        setDocuments([])
+        entriesRef.current = [entry]
+        setEntries([entry])
+        persistBooks(snapshot({ documents: [], entries: [entry], accounts: accountsRef.current }))
+      } else {
+        entriesRef.current = [entry, ...entriesRef.current]
+        setEntries((prev) => [entry, ...prev])
+        persistBooks(snapshot({ entries: entriesRef.current, accounts: accountsRef.current }))
+      }
+
+      if (input.setPeriodFrom) {
+        setPeriod((prev) => ({ ...prev, from: input.date }))
+      }
+
+      return { errors: [], entryId: entry.id }
+    },
+    [persistBooks, snapshot],
+  )
+
   const clearJournal = useCallback(() => {
     documentsRef.current = []
     entriesRef.current = []
@@ -684,6 +754,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteEntry,
       addManualEntry,
       postSimpleEntry,
+      postOpeningBalances,
       clearJournal,
       resetAccounts,
       openaiConfigured,
@@ -714,6 +785,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteEntry,
       addManualEntry,
       postSimpleEntry,
+      postOpeningBalances,
       clearJournal,
       resetAccounts,
       openaiConfigured,

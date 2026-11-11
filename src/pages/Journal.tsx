@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { accountLabel } from '../chartOfAccounts'
 import { approvedEntries, inPeriod, journalRefMap, validateEntry } from '../accounting'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
+import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -14,6 +15,7 @@ export function Journal() {
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [showComposer, setShowComposer] = useState(true)
+  const [showOpening, setShowOpening] = useState(false)
   const [showClear, setShowClear] = useState(false)
 
   const refs = useMemo(() => journalRefMap(entries, period), [entries, period])
@@ -78,6 +80,13 @@ export function Journal() {
           <button className="btn secondary" type="button" onClick={() => setShowComposer((v) => !v)}>
             {showComposer ? 'Hide composer' : 'New entry'}
           </button>
+          <button
+            className="btn secondary"
+            type="button"
+            onClick={() => setShowOpening((v) => !v)}
+          >
+            {showOpening ? 'Hide openings' : 'Opening balances'}
+          </button>
           <button className="btn secondary" type="button" onClick={() => addManualEntry()}>
             Blank draft
           </button>
@@ -86,6 +95,13 @@ export function Journal() {
           </button>
         </div>
       </div>
+
+      {showOpening && (
+        <div className="panel" style={{ marginBottom: '1rem' }}>
+          <h2 className="settings-subhead">Start month / opening balances</h2>
+          <OpeningBalancesPanel />
+        </div>
+      )}
 
       {showClear && (
         <div className="panel" style={{ marginBottom: '1rem' }}>
