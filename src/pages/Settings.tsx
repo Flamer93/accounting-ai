@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
+import { ClearBooksPanel } from '../components/ClearBooksPanel'
 import {
   EXTRACT_FIELD_META,
   NAV_VIEW_META,
@@ -121,6 +122,11 @@ export function Settings() {
       <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
         <h2>Chart of accounts</h2>
         <AccountsManager />
+      </div>
+
+      <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
+        <h2>Clear books</h2>
+        <ClearBooksPanel />
       </div>
 
       <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>

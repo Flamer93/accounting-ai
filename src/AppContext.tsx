@@ -13,6 +13,7 @@ import { apiFetch } from './apiClient'
 import {
   accountLabel,
   accountsSorted,
+  DEFAULT_CHART_OF_ACCOUNTS,
   loadAccounts,
   nextAccountCode,
   saveAccounts,
@@ -83,6 +84,10 @@ interface AppState {
     amount: number
     vendor?: string
   }) => { errors: string[]; entryId?: string }
+  /** Wipe all journal entries and documents; statements go empty. Keeps accounts & company. */
+  clearJournal: () => void
+  /** Restore default chart of accounts (does not clear company name). */
+  resetAccounts: () => void
   openaiConfigured: boolean | null
   googleKeySaved: boolean
   openaiKeySaved: boolean
@@ -529,6 +534,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
     [],
   )
 
+  const clearJournal = useCallback(() => {
+    documentsRef.current = []
+    entriesRef.current = []
+    saveDocuments([])
+    saveEntries([])
+    setDocuments([])
+    setEntries([])
+  }, [])
+
+  const resetAccounts = useCallback(() => {
+    const defaults = DEFAULT_CHART_OF_ACCOUNTS.map((a) => ({ ...a }))
+    accountsRef.current = defaults
+    setChartOfAccounts(defaults)
+    saveAccounts(defaults)
+    setAccounts(defaults)
+  }, [])
+
   const value = useMemo(
     () => ({
       documents,
@@ -548,6 +570,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteEntry,
       addManualEntry,
       postSimpleEntry,
+      clearJournal,
+      resetAccounts,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,
@@ -574,6 +598,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       deleteEntry,
       addManualEntry,
       postSimpleEntry,
+      clearJournal,
+      resetAccounts,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,

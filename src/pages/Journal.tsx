@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { accountLabel } from '../chartOfAccounts'
 import { approvedEntries, inPeriod, journalRefMap, validateEntry } from '../accounting'
+import { ClearBooksPanel } from '../components/ClearBooksPanel'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -13,6 +14,7 @@ export function Journal() {
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [showComposer, setShowComposer] = useState(true)
+  const [showClear, setShowClear] = useState(false)
 
   const refs = useMemo(() => journalRefMap(entries, period), [entries, period])
   const visible = entries
@@ -79,8 +81,18 @@ export function Journal() {
           <button className="btn secondary" type="button" onClick={() => addManualEntry()}>
             Blank draft
           </button>
+          <button className="btn danger" type="button" onClick={() => setShowClear((v) => !v)}>
+            {showClear ? 'Hide clear' : 'Clear journal'}
+          </button>
         </div>
       </div>
+
+      {showClear && (
+        <div className="panel" style={{ marginBottom: '1rem' }}>
+          <h2 className="settings-subhead">Start from scratch</h2>
+          <ClearBooksPanel />
+        </div>
+      )}
 
       {showComposer && (
         <div className="panel" style={{ marginBottom: '1rem' }}>
