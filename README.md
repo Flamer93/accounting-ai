@@ -1,6 +1,6 @@
-# Receipt Ledger
+# Accounting AI (Receipt Ledger)
 
-Private bookkeeping app: upload receipt photos, extract journal entries (OpenAI when `OPENAI_API_KEY` is set, otherwise a mock extractor), then generate general journal, ledger, T-accounts, trial balance, balance sheet, and income statement.
+Private multi-account bookkeeping: sign in, keep blank books per user, post journal entries, and keep ledger / T-accounts / trial balance / income statement / balance sheet in sync.
 
 ## Run locally
 
@@ -11,6 +11,8 @@ npm run dev
 
 Open http://127.0.0.1:5173
 
+Without Firebase env vars the app uses **Local mock auth** (banner) — accounts and books stay in this browser, scoped by mock uid.
+
 Production-style:
 
 ```bash
@@ -18,8 +20,22 @@ npm run build
 npm start
 ```
 
+## Firebase (multi-account)
+
+Set these host env vars / Cursor secrets (no `VITE_` / `NEXT_PUBLIC_` prefixes):
+
+- `FIREBASE_API_KEY`
+- `FIREBASE_AUTH_DOMAIN`
+- `FIREBASE_PROJECT_ID`
+- `FIREBASE_STORAGE_BUCKET`
+- `FIREBASE_MESSAGING_SENDER_ID`
+- `FIREBASE_APP_ID`
+
+Enable Email/Password (and optionally Google) in Firebase Authentication, and Firestore with rules that restrict `users/{uid}/**` to that uid. See internal notes for rules and publish binding.
+
 ## Notes
 
-- Documents and journal entries persist in browser `localStorage`.
-- Sample receipts and entries seed on first load.
-- Never commit an API key. Bind `OPENAI_API_KEY` as an app secret for published AI extraction.
+- Per-user books persist in Firestore (`users/{uid}/books/main`) when Firebase is configured; otherwise per-uid localStorage.
+- Blank books template — no seed company data.
+- Optional extract keys are client-side and scoped to the signed-in uid.
+- Never commit API keys. Bind `OPENAI_API_KEY` for host OpenAI extract if needed.

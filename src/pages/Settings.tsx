@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
+import { useAuth } from '../firebase/AuthContext'
 import {
   EXTRACT_FIELD_META,
   NAV_VIEW_META,
@@ -25,6 +26,7 @@ export function Settings() {
     removeOpenAiKey,
     preferredProvider,
   } = useApp()
+  const { user, mode, signOutUser } = useAuth()
   const [fieldError, setFieldError] = useState<string | null>(null)
   const [googleKeyDraft, setGoogleKeyDraft] = useState('')
   const [googleKeyMessage, setGoogleKeyMessage] = useState<string | null>(null)
@@ -32,6 +34,10 @@ export function Settings() {
   const [openaiKeyMessage, setOpenaiKeyMessage] = useState<string | null>(null)
   const [companyDraft, setCompanyDraft] = useState(settings.companyName)
   const [advancedOpen, setAdvancedOpen] = useState(false)
+
+  useEffect(() => {
+    setCompanyDraft(settings.companyName)
+  }, [settings.companyName])
 
   function onNavToggle(key: NavViewKey, enabled: boolean) {
     updateSettings(toggleNavView(settings, key, enabled))
@@ -60,7 +66,7 @@ export function Settings() {
     }
     saveGoogleKey(googleKeyDraft)
     setGoogleKeyDraft('')
-    setGoogleKeyMessage('Google API key saved in this browser only (localStorage).')
+    setGoogleKeyMessage('Google API key saved for this account only (this browser).')
   }
 
   function onClearGoogleKey() {
@@ -77,7 +83,7 @@ export function Settings() {
     }
     saveOpenAiKey(openaiKeyDraft)
     setOpenaiKeyDraft('')
-    setOpenaiKeyMessage('OpenAI API key saved in this browser only (localStorage).')
+    setOpenaiKeyMessage('OpenAI API key saved for this account only (this browser).')
   }
 
   function onClearOpenAiKey() {
@@ -99,6 +105,18 @@ export function Settings() {
       </div>
 
       <div className="panel settings-block">
+        <h2>Account</h2>
+        <p className="muted" style={{ marginTop: 0 }}>
+          Signed in as <strong>{user?.email || 'unknown'}</strong>
+          {mode === 'mock' ? ' (local mock auth)' : ' (Firebase)'}. Books and settings belong only to
+          this account.
+        </p>
+        <button type="button" className="btn secondary" onClick={() => void signOutUser()}>
+          Sign out
+        </button>
+      </div>
+
+      <div className="panel settings-block" style={{ marginTop: '1.1rem' }}>
         <h2>Company</h2>
         <form className="google-key-form" onSubmit={onSaveCompany}>
           <label className="field">
