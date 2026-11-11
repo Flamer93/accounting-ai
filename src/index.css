@@ -26,20 +26,35 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  width: 100%;
+}
+
 html,
 body,
 #root {
+  width: 100%;
+  height: 100%;
   min-height: 100%;
+  min-height: 100dvh;
+  margin: 0;
 }
 
 body {
-  margin: 0;
-  min-width: 320px;
+  min-width: 0;
+  overflow: hidden;
   background:
     radial-gradient(1200px 600px at 10% -10%, rgba(47, 107, 85, 0.16), transparent 55%),
     radial-gradient(900px 500px at 100% 0%, rgba(139, 94, 60, 0.12), transparent 50%),
     linear-gradient(180deg, #e8f0eb 0%, #f3f7f4 42%, #eef3f0 100%);
   background-attachment: fixed;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 body::before {
@@ -77,9 +92,29 @@ h3,
 }
 
 .app-shell {
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 1.25rem 1.25rem 3rem;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding:
+    max(0.85rem, env(safe-area-inset-top, 0px))
+    max(1rem, env(safe-area-inset-right, 0px))
+    max(0.85rem, env(safe-area-inset-bottom, 0px))
+    max(1rem, env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .topbar {
@@ -87,7 +122,8 @@ h3,
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  flex: 0 0 auto;
+  margin-bottom: 0;
   animation: rise 0.6s ease both;
 }
 
@@ -137,7 +173,7 @@ h3,
   position: relative;
   overflow: hidden;
   border-radius: 28px;
-  min-height: min(68vh, 560px);
+  min-height: clamp(14rem, 42dvh, 28rem);
   padding: clamp(1.5rem, 4vw, 3rem);
   display: grid;
   align-items: end;
@@ -234,6 +270,9 @@ h3,
 }
 
 .panel {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.72);
   backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, 0.7);
@@ -357,7 +396,10 @@ h3,
 }
 
 .table-wrap {
+  width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table.ledger {
@@ -1069,10 +1111,13 @@ code {
 }
 
 .auth-shell {
-  min-height: 100vh;
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
   display: grid;
   place-items: center;
   padding: 1.5rem;
+  box-sizing: border-box;
 }
 
 .auth-card {

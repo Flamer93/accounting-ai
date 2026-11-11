@@ -118,16 +118,23 @@ function createWindow(url) {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
-    minWidth: 960,
-    minHeight: 640,
+    minWidth: 720,
+    minHeight: 520,
     title: 'Accounting AI',
     show: false,
+    autoHideMenuBar: true,
+    fullscreenable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
+  })
+
+  // Keep Chromium layout in sync with OS resize / maximize / fullscreen.
+  mainWindow.on('resize', () => {
+    mainWindow?.webContents.invalidate?.()
   })
 
   mainWindow.once('ready-to-show', () => {

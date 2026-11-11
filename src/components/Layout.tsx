@@ -37,19 +37,21 @@ export function Layout() {
         </div>
       </header>
 
-      {persistError && (
-        <div className="auth-mock-banner inline-banner persist-error" role="alert">
-          <strong>Sync issue</strong>
-          <span>{persistError}</span>
-        </div>
-      )}
-      {!booksReady ? (
-        <div className="panel">
-          <p className="muted">Loading your books…</p>
-        </div>
-      ) : (
-        <Outlet />
-      )}
+      <main className="app-main">
+        {persistError && (
+          <div className="auth-mock-banner inline-banner persist-error" role="alert">
+            <strong>Sync issue</strong>
+            <span>{persistError}</span>
+          </div>
+        )}
+        {!booksReady ? (
+          <div className="panel">
+            <p className="muted">Loading your books…</p>
+          </div>
+        ) : (
+          <Outlet />
+        )}
+      </main>
     </div>
   )
 }
