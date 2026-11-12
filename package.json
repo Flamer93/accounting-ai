@@ -1,7 +1,7 @@
 {
   "name": "receipt-ledger",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Accounting AI — multi-account books with local receipt extract",
   "author": "Accounting AI",
   "type": "module",
@@ -17,9 +17,9 @@
     "electron:pack": "npm run build && npm run electron:bundle",
     "electron:build:win": "npm run electron:pack && electron-builder --win portable --x64",
     "electron:build:win:nsis": "npm run electron:pack && electron-builder --win nsis --x64",
-    "electron:build:mac": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac zip",
-    "electron:build:mac:dmg": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg",
-    "electron:build:desktop": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --x64 --mac zip"
+    "electron:build:mac": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac zip --x64 --arm64",
+    "electron:build:mac:dmg": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac dmg --x64 --arm64",
+    "electron:build:desktop": "npm run electron:pack && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable --x64 --mac zip --x64 --arm64"
   },
   "dependencies": {
     "cors": "^2.8.6",
