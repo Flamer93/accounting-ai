@@ -108,7 +108,7 @@ export function AddTransaction() {
   }
 
   return (
-    <div>
+    <div className="add-tx-page">
       <div className="page-head">
         <div>
           <h1>Add a transaction</h1>
