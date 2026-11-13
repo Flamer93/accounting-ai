@@ -679,7 +679,7 @@ table.ledger th.num {
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  background: rgba(255, 255, 255, 0.65);
+  background: var(--panel-solid);
 }
 
 .t-account h3 {
@@ -1523,7 +1523,7 @@ code {
   padding: 0.55rem 0.65rem;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
@@ -1534,6 +1534,7 @@ code {
   font-weight: 600;
   letter-spacing: 0;
   font-family: inherit;
+  color: inherit;
 }
 
 .tx-kind span {
@@ -1543,14 +1544,20 @@ code {
 }
 
 .tx-kind:hover {
-  border-color: rgba(47, 107, 85, 0.45);
-  background: rgba(47, 107, 85, 0.06);
+  border-color: color-mix(in srgb, var(--leaf) 50%, var(--line));
+  background: color-mix(in srgb, var(--leaf) 14%, var(--field));
+  color: var(--ink);
 }
 
 .tx-kind.active {
   border-color: var(--leaf);
-  background: rgba(47, 107, 85, 0.12);
-  box-shadow: 0 0 0 1px rgba(47, 107, 85, 0.25);
+  background: color-mix(in srgb, var(--leaf) 22%, var(--panel-solid));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--leaf) 35%, transparent);
+  color: var(--ink);
+}
+
+.tx-kind.active span {
+  color: var(--ink-soft);
 }
 
 .add-tx-preview {
@@ -1664,7 +1671,7 @@ code {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 0.35rem 0.45rem;
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--field);
   color: var(--ink);
   font: inherit;
   font-size: 0.85rem;
