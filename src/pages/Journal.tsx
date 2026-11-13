@@ -143,42 +143,44 @@ export function Journal() {
 
       <div className="books-sheet journal-sheet">
         <StatementHeader title="General Journal" variant="plain" />
-        <table className="journal-classic">
-          <thead>
-            <tr>
-              <th className="col-date">Date</th>
-              <th className="col-desc">Description</th>
-              <th className="col-pr">PR</th>
-              <th className="col-amt">Amount (Dr. $)</th>
-              <th className="col-amt">Amount (Cr. $)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {posted.map((entry) => {
-              const debitLines = entry.lines.filter((l) => (l.debit || 0) > 0)
-              const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
-              const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
-              return (
-                <FragmentRows
-                  key={entry.id}
-                  entry={entry}
-                  debitLines={debitLines}
-                  creditLines={creditLines}
-                  rowSpan={rowSpan}
-                  pr={refs.get(entry.id) || ''}
-                />
-              )
-            })}
-            {!posted.length && (
+        <div className="table-wrap">
+          <table className="journal-classic">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  No entries yet. Post above — formats stay blank until you enter real dates and
-                  amounts.
-                </td>
+                <th className="col-date">Date</th>
+                <th className="col-desc">Description</th>
+                <th className="col-pr">PR</th>
+                <th className="col-amt">Amount (Dr. $)</th>
+                <th className="col-amt">Amount (Cr. $)</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {posted.map((entry) => {
+                const debitLines = entry.lines.filter((l) => (l.debit || 0) > 0)
+                const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
+                const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
+                return (
+                  <FragmentRows
+                    key={entry.id}
+                    entry={entry}
+                    debitLines={debitLines}
+                    creditLines={creditLines}
+                    rowSpan={rowSpan}
+                    pr={refs.get(entry.id) || ''}
+                  />
+                )
+              })}
+              {!posted.length && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No entries yet. Post above — formats stay blank until you enter real dates and
+                    amounts.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {visible.some((e) => e.status !== 'approved') && (

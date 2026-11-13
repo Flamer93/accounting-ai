@@ -442,7 +442,7 @@ table.ledger {
 
 table.ledger th,
 table.ledger td {
-  padding: 0.75rem 1rem;
+  padding: 0.85rem 2.15rem;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
@@ -451,7 +451,7 @@ table.ledger td {
 table.ledger th {
   font-size: 0.75rem;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   color: var(--ink-soft);
   font-weight: 600;
 }
@@ -460,6 +460,10 @@ table.ledger td.num,
 table.ledger th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+  padding-left: 3rem;
+  padding-right: 2.25rem;
+  min-width: 9.5rem;
+  white-space: nowrap;
 }
 
 .entry-editor {
@@ -812,9 +816,10 @@ code {
   gap: 0.5rem;
 }
 
-/* Journal classic */
+/* Journal classic — wide horizontal gaps between Date / Desc / PR / Dr / Cr */
 .journal-classic {
-  width: 100%;
+  width: max(100%, 64rem);
+  min-width: 64rem;
   border-collapse: separate;
   border-spacing: 0;
   font-size: 0.92rem;
@@ -824,45 +829,60 @@ code {
 .journal-classic th,
 .journal-classic td {
   border: 1px solid #222;
-  padding: 0.65rem 1.05rem;
+  padding: 0.85rem 2.35rem;
   vertical-align: top;
 }
 
 .journal-classic thead th {
   background: #e8e8e8;
   font-weight: 700;
-  padding: 0.75rem 1.05rem;
+  padding: 0.95rem 2.35rem;
+  letter-spacing: 0.03em;
 }
 
 .journal-classic .col-date {
-  width: 7.5rem;
+  width: 12rem;
   white-space: nowrap;
+  padding-left: 2.5rem;
+  padding-right: 2.75rem;
 }
 
 .journal-classic .col-desc {
   width: auto;
+  padding-left: 2.5rem;
+  padding-right: 2.75rem;
 }
 
 .journal-classic .col-pr {
-  width: 4.25rem;
+  width: 7rem;
   text-align: center;
+  padding-left: 2.25rem;
+  padding-right: 2.25rem;
 }
 
 .journal-classic .col-amt {
-  width: 9.5rem;
+  width: 14rem;
   text-align: right;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  padding-left: 3rem;
+  padding-right: 2.75rem;
 }
 
 .journal-classic .credit-indent {
-  padding-left: 2.75rem;
+  padding-left: 4rem;
 }
 
 .journal-classic .journal-narr .col-desc {
   font-style: italic;
   color: #333;
-  padding-left: 1.75rem;
+  padding-left: 3rem;
+}
+
+.books-sheet,
+.journal-sheet {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .btn-compact {
@@ -964,6 +984,13 @@ code {
 
   .journal-classic {
     table-layout: auto;
+    min-width: 52rem;
+    width: max(100%, 52rem);
+  }
+
+  .journal-classic th,
+  .journal-classic td {
+    padding: 0.75rem 1.65rem;
   }
 
   .journal-classic .col-date,
@@ -1161,7 +1188,7 @@ code {
 }
 
 .bs-apple td {
-  padding: 0.55rem 1.15rem;
+  padding: 0.65rem 2rem;
 }
 
 .bs-apple tr.alt td {

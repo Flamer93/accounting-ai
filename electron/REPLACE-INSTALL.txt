@@ -1,0 +1,42 @@
+Accounting AI — replace a previous install
+==========================================
+
+New downloads do not auto-uninstall old copies. Replace the old app folder/.app
+with the new one (same location is fine). Your books stay in local app data and
+are not deleted when you replace the program files.
+
+Windows (folder zip — recommended)
+----------------------------------
+1. Quit Accounting AI if it is running (check the system tray / Task Manager).
+2. Unzip Accounting-AI-win-x64-folder.zip.
+3. Delete or rename your old Accounting-AI folder (or whatever you named it).
+4. Move the new folder into place (overwrite if you unzip into the same path).
+5. Run Accounting-AI.exe inside the new folder.
+6. Optional: remove old portable .exe copies from Downloads/Desktop so you do
+   not open an outdated build by mistake.
+
+Windows (portable zip)
+----------------------
+1. Quit the app.
+2. Unzip Accounting-AI-win-x64.zip.
+3. Delete the previous Accounting-AI-win-x64.exe (or overwrite it).
+4. Run the new Accounting-AI-win-x64.exe.
+5. First launch may extract to a temp folder — wait for the window.
+
+macOS Ventura 13+
+-----------------
+1. Quit Accounting AI (Cmd+Q).
+2. Unzip the arm64 or x64 zip for your Mac.
+3. Drag Accounting AI.app onto Applications (or your previous location).
+4. When asked to Replace, choose Replace.
+5. First open: right-click the app → Open → Open (unsigned build / Gatekeeper).
+6. Optional: remove older copies from Downloads.
+
+Uninstall (optional)
+--------------------
+Windows: delete the app folder / portable exe. User data is under
+  %APPDATA%\Accounting AI\
+macOS: move Accounting AI.app to Trash. User data is under
+  ~/Library/Application Support/Accounting AI/
+
+Deleting user data wipes local books — only do that if you intend a full reset.

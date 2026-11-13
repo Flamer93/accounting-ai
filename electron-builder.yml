@@ -20,6 +20,8 @@ extraResources:
     to: app-dist
   - from: electron/desktop.env.example
     to: desktop.env.example
+  - from: electron/REPLACE-INSTALL.txt
+    to: REPLACE-INSTALL.txt
 
 # One Electron shell — Windows + macOS
 win:
