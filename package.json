@@ -1,7 +1,7 @@
 {
   "name": "receipt-ledger",
   "private": true,
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Accounting AI — multi-account books with local receipt extract",
   "author": "Accounting AI",
   "type": "module",

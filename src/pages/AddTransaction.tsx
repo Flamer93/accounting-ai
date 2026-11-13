@@ -120,12 +120,15 @@ export function AddTransaction() {
         </div>
       </div>
 
-      <div style={{ marginBottom: '0.85rem' }}>
+      <div className="add-tx-stack">
         <WorksheetScanPanel />
-      </div>
 
-      <div className="panel add-tx-panel">
-        <form className="add-tx" onSubmit={onSubmit}>
+        <div className="panel add-tx-panel">
+          <div className="add-tx-panel-head">
+            <strong>Manual entry</strong>
+            <p className="muted">Or post one typical business transaction by hand.</p>
+          </div>
+          <form className="add-tx" onSubmit={onSubmit}>
           <fieldset className="tx-kinds">
             <legend className="sr-only">Transaction type</legend>
             {KINDS.map((k) => (
@@ -238,7 +241,8 @@ export function AddTransaction() {
             {ok && <span className="badge ok">{ok}</span>}
             {error && <span className="error">{error}</span>}
           </div>
-        </form>
+          </form>
+        </div>
       </div>
     </div>
   )
