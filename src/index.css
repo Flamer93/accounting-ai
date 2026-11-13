@@ -350,11 +350,21 @@ h3,
 .field input,
 .field select,
 .field textarea {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.9);
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
   color: var(--ink);
+}
+
+.field select {
+  /* Prevent native select min-content width from blowing out grid cells */
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .grid-docs {
@@ -479,13 +489,15 @@ table.ledger th.num {
 
 .fields {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.85rem 1.25rem;
 }
 
 .field {
   display: grid;
   gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .field label {
@@ -500,8 +512,8 @@ table.ledger th.num {
 
 .line-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr;
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem 1.1rem;
 }
 
 .t-grid {
@@ -737,7 +749,10 @@ code {
 
 .post-entry {
   display: grid;
-  gap: 0.75rem;
+  gap: 0.85rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .post-entry-head {
@@ -747,8 +762,34 @@ code {
 
 .post-entry-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 0.65rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem 1.35rem;
+  width: 100%;
+  max-width: 100%;
+  align-items: start;
+}
+
+.post-entry-grid > .field {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.post-entry.compact .post-entry-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .post-entry-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .post-entry-grid,
+  .post-entry.compact .post-entry-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .opening-balances {
