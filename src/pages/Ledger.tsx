@@ -21,11 +21,8 @@ export function Ledger() {
     <div>
       <div className="page-head">
         <div>
-          <h1>General Ledger</h1>
-          <p>
-            Per-account activity from approved journal entries. Add a line below to post a new
-            double-entry that updates every statement.
-          </p>
+          <h1>Ledger</h1>
+          <p>Account activity from approved journal entries.</p>
         </div>
         <PeriodControls />
       </div>

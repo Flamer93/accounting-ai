@@ -69,11 +69,8 @@ export function Journal() {
     <div>
       <div className="page-head">
         <div>
-          <h1>General Journal</h1>
-          <p>
-            Primary entry point. Post here and Ledger, T-Accounts, Trial Balance, Income Statement,
-            and Balance Sheet all update from the same approved entries.
-          </p>
+          <h1>Journal</h1>
+          <p>Post entries here. All statements update from the same approved books.</p>
         </div>
         <div className="cta-row">
           <PeriodControls />

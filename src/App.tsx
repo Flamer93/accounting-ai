@@ -3,7 +3,6 @@ import { AppProvider } from './AppContext'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './firebase/AuthContext'
 import { BalanceSheet } from './pages/BalanceSheet'
-import { Documents } from './pages/Documents'
 import { GuardedView } from './pages/GuardedView'
 import { Home } from './pages/Home'
 import { IncomeStatement } from './pages/IncomeStatement'
@@ -22,7 +21,6 @@ function AuthenticatedApp() {
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Home />} />
-            <Route path="documents" element={<Documents />} />
             <Route path="settings" element={<Settings />} />
             <Route
               path="journal"

@@ -15,10 +15,7 @@ export function IncomeStatement() {
       <div className="page-head">
         <div>
           <h1>Income Statement</h1>
-          <p>
-            Formatted report from approved books. Optional post below adds revenue or expense via a
-            journal entry (credit revenue / debit expense vs Cash).
-          </p>
+          <p>Revenue and expenses from approved books.</p>
         </div>
         <PeriodControls />
       </div>

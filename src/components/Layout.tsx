@@ -16,37 +16,31 @@ export function Layout() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand-lockup">
-          <NavLink to="/" className="brand">
-            {settings.companyName.trim() || 'Accounting AI'}
-          </NavLink>
-          <span className="brand-sub">Blank books template — enter once, every statement updates</span>
-        </div>
-        <div className="topbar-right">
-          <nav className="nav" aria-label="Primary">
-            {links.map((link) => (
-              <NavLink
-                key={link.to}
-                to={link.to}
-                className={({ isActive }) => (isActive ? 'active' : undefined)}
-              >
-                {link.label}
-              </NavLink>
-            ))}
-          </nav>
-        </div>
+        <NavLink to="/" className="brand">
+          {settings.companyName.trim() || 'Accounting AI'}
+        </NavLink>
+        <nav className="nav" aria-label="Primary">
+          {links.map((link) => (
+            <NavLink
+              key={link.to}
+              to={link.to}
+              className={({ isActive }) => (isActive ? 'active' : undefined)}
+            >
+              {link.label}
+            </NavLink>
+          ))}
+        </nav>
       </header>
 
       <main className="app-main">
         {persistError && (
-          <div className="auth-mock-banner inline-banner persist-error" role="alert">
-            <strong>Sync issue</strong>
-            <span>{persistError}</span>
+          <div className="inline-alert" role="alert">
+            {persistError}
           </div>
         )}
         {!booksReady ? (
           <div className="panel">
-            <p className="muted">Loading your books…</p>
+            <p className="muted">Loading books…</p>
           </div>
         ) : (
           <Outlet />

@@ -61,10 +61,7 @@ export function TrialBalance() {
       <div className="page-head">
         <div>
           <h1>Trial Balance</h1>
-          <p>
-            Proof that debits equal credits. Adjustments below post journal entries — they do not
-            edit cells in isolation.
-          </p>
+          <p>Debits equal credits. Adjustments post as journal entries.</p>
         </div>
         <PeriodControls />
       </div>

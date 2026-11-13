@@ -15,10 +15,7 @@ export function TAccounts() {
       <div className="page-head">
         <div>
           <h1>T-Accounts</h1>
-          <p>
-            Classic debit / credit sides. Posting from here writes a journal entry so Trial Balance
-            and statements stay aligned.
-          </p>
+          <p>Debit and credit sides. Posts update the journal and statements.</p>
         </div>
         <PeriodControls />
       </div>
