@@ -3,6 +3,8 @@
   --ink-soft: #3a4740;
   --mist: #dfe8e2;
   --paper: #f3f7f4;
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-solid: #ffffff;
   --leaf: #2f6b55;
   --leaf-deep: #1e4a3b;
   --cedar: #8b5e3c;
@@ -12,14 +14,40 @@
   --warn: #9a6b1f;
   --ok: #2f6b55;
   --radius: 12px;
-  --shadow: 0 10px 28px rgba(21, 32, 27, 0.06);
-  font-family: 'Sora', sans-serif;
+  --shadow: 0 6px 18px rgba(21, 32, 27, 0.06);
+  --bg-1: #d7e6dc;
+  --bg-2: #e8f0eb;
+  --bg-3: #f3f7f4;
+  --field: rgba(255, 255, 255, 0.9);
+  font-family: 'Sora', 'IBM Plex Sans', system-ui, sans-serif;
   line-height: 1.45;
   color: var(--ink);
   background: var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme='dark'] {
+  --ink: #e7f0ea;
+  --ink-soft: #a7b7ae;
+  --mist: #1c2923;
+  --paper: #101714;
+  --panel: rgba(22, 32, 28, 0.92);
+  --panel-solid: #16201c;
+  --leaf: #4f9a7c;
+  --leaf-deep: #6fb896;
+  --cedar: #c49a72;
+  --line: rgba(231, 240, 234, 0.14);
+  --glow: rgba(79, 154, 124, 0.22);
+  --danger: #e07a6c;
+  --warn: #d4a45a;
+  --ok: #4f9a7c;
+  --shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+  --bg-1: #0c1210;
+  --bg-2: #121a16;
+  --bg-3: #18231e;
+  --field: rgba(10, 16, 13, 0.92);
 }
 
 * {
@@ -45,10 +73,12 @@ body {
   min-width: 0;
   overflow: hidden;
   background:
-    radial-gradient(1200px 600px at 10% -10%, rgba(47, 107, 85, 0.16), transparent 55%),
-    radial-gradient(900px 500px at 100% 0%, rgba(139, 94, 60, 0.12), transparent 50%),
-    linear-gradient(180deg, #e8f0eb 0%, #f3f7f4 42%, #eef3f0 100%);
-  background-attachment: fixed;
+    radial-gradient(900px 520px at 8% -8%, color-mix(in srgb, var(--leaf) 28%, transparent), transparent 58%),
+    radial-gradient(780px 460px at 100% 0%, color-mix(in srgb, var(--cedar) 22%, transparent), transparent 52%),
+    radial-gradient(700px 420px at 50% 110%, color-mix(in srgb, var(--leaf-deep) 18%, transparent), transparent 60%),
+    linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 38%, var(--bg-3) 100%);
+  /* scroll attachment is much cheaper on macOS Electron than fixed */
+  background-attachment: scroll;
 }
 
 #root {
@@ -62,12 +92,20 @@ body::before {
   position: fixed;
   inset: 0;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.22;
   background-image:
-    linear-gradient(rgba(21, 32, 27, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(21, 32, 27, 0.03) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.55), transparent 85%);
+    linear-gradient(color-mix(in srgb, var(--ink) 8%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 8%, transparent) 1px, transparent 1px);
+  background-size: 36px 36px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.35), transparent 70%);
+  /* Avoid painting grid lines through content cards */
+  z-index: 0;
+}
+
+.app-shell,
+.app-main {
+  position: relative;
+  z-index: 1;
 }
 
 a {
@@ -85,10 +123,12 @@ textarea {
 h1,
 h2,
 h3,
-.brand {
-  font-family: 'Fraunces', serif;
+.brand,
+.page-title {
+  font-family: 'Sora', 'IBM Plex Sans', system-ui, sans-serif;
   font-weight: 700;
   letter-spacing: -0.02em;
+  font-variant-ligatures: none;
 }
 
 .app-shell {
@@ -124,11 +164,38 @@ h3,
   gap: 1rem;
   flex: 0 0 auto;
   padding: 0.55rem 0.85rem;
-  border: 1px solid rgba(255, 255, 255, 0.65);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(10px);
+  background: var(--panel);
+  /* backdrop-filter is a major macOS Electron lag source — skip it */
   box-shadow: var(--shadow);
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.theme-chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-chip:hover {
+  color: var(--leaf-deep);
+  border-color: color-mix(in srgb, var(--leaf) 45%, transparent);
 }
 
 .brand {
@@ -267,7 +334,7 @@ h3,
 
 .hero h1 {
   margin: 0;
-  font-family: 'Fraunces', serif;
+  font-family: 'Sora', 'IBM Plex Sans', system-ui, sans-serif;
   font-size: clamp(1.85rem, 4.5vw, 2.75rem);
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -334,12 +401,12 @@ h3,
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  background: rgba(255, 255, 255, 0.78);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  background: var(--panel);
+  border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 1rem 1.15rem;
   box-shadow: var(--shadow);
+  contain: layout paint style;
 }
 
 .page-head {
@@ -376,7 +443,26 @@ h3,
 .settings-subhead {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;
-  font-family: 'Fraunces', serif;
+  font-family: 'Sora', 'IBM Plex Sans', system-ui, sans-serif;
+}
+
+.theme-toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.journal-highlight-field {
+  min-width: 12rem;
+}
+
+.journal-classic tr.journal-entry-hit td {
+  background: color-mix(in srgb, var(--leaf) 10%, transparent);
+}
+
+.journal-classic tr.journal-line-hit td {
+  background: color-mix(in srgb, var(--leaf) 22%, transparent);
+  font-weight: 600;
 }
 
 .settings-lead {
@@ -422,7 +508,7 @@ h3,
   max-width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--field);
   border-radius: 10px;
   padding: 0.55rem 0.7rem;
   color: var(--ink);
@@ -671,24 +757,33 @@ table.ledger th.num {
 }
 
 .dropzone {
-  border: 1.5px dashed rgba(47, 107, 85, 0.35);
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 9.5rem;
+  border: 1.5px dashed color-mix(in srgb, var(--leaf) 45%, transparent);
   border-radius: 18px;
-  padding: 1.4rem;
+  padding: 2rem 1.5rem;
   text-align: center;
-  background: rgba(255, 255, 255, 0.45);
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+  background: color-mix(in srgb, var(--panel-solid) 70%, transparent);
+  transition: border-color 0.15s ease, background 0.15s ease;
   cursor: pointer;
+  box-sizing: border-box;
 }
 
 .dropzone:hover,
 .dropzone.dragging {
   border-color: var(--leaf);
-  background: rgba(47, 107, 85, 0.06);
-  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--leaf) 10%, var(--panel-solid));
 }
 
 .dropzone input {
   display: none;
+}
+
+.worksheet-scan .dropzone {
+  min-height: 13.5rem;
+  font-size: 1rem;
 }
 
 .error {
@@ -709,7 +804,7 @@ table.ledger th.num {
   padding: 0.6rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.55);
+  background: color-mix(in srgb, var(--panel-solid) 70%, transparent);
 }
 
 .settings-row span {
@@ -750,12 +845,13 @@ code {
 
 /* —— Shared books statement chrome —— */
 .books-sheet {
-  background: #fff;
-  border: 1px solid rgba(21, 32, 27, 0.12);
+  background: var(--panel-solid);
+  border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
   box-shadow: var(--shadow);
   font-family: 'IBM Plex Sans', 'Sora', sans-serif;
+  contain: content;
 }
 
 .stmt-head {
@@ -1000,7 +1096,7 @@ code {
 .coa-add-row input,
 .coa-add-row select {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--field);
   border-radius: 8px;
   padding: 0.4rem 0.55rem;
   color: var(--ink);
@@ -1024,8 +1120,21 @@ code {
   align-items: end;
 }
 
+.opening-balances-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem 1.5rem;
+  align-items: start;
+}
+
 .opening-balances-grid.condensed {
   gap: 0.65rem;
+}
+
+@media (max-width: 720px) {
+  .opening-balances-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .opening-balances.condensed .opening-balances-group {
@@ -1048,10 +1157,11 @@ code {
 
 .opening-balances.condensed .opening-amount-row input {
   border: 1px solid var(--line);
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--field);
   border-radius: 8px;
   padding: 0.3rem 0.45rem;
   width: 100%;
+  color: var(--ink);
 }
 
 .journal-saves-form {

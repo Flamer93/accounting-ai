@@ -5,7 +5,7 @@ import { ApiKeysPanel } from '../components/ApiKeysPanel'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
 import { JournalSavesPanel } from '../components/JournalSavesPanel'
 import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
-import { NAV_VIEW_META, toggleNavView, type NavViewKey } from '../settings'
+import { NAV_VIEW_META, toggleNavView, type NavViewKey, type ThemeMode } from '../settings'
 
 export function Settings() {
   const { settings, updateSettings } = useApp()
@@ -30,6 +30,26 @@ export function Settings() {
         <div>
           <h1>Settings</h1>
           <p>Company, AI API keys, accounts, openings, saved journals, and navigation.</p>
+        </div>
+      </div>
+
+      <div className="panel settings-block">
+        <h2>Appearance</h2>
+        <p className="muted settings-lead">Switch between light and dark for the whole app.</p>
+        <div className="theme-toggle-row" role="group" aria-label="Theme">
+          {([
+            ['light', 'Light'],
+            ['dark', 'Dark'],
+          ] as [ThemeMode, string][]).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              className={`btn ${settings.theme === mode ? '' : 'secondary'}`}
+              onClick={() => updateSettings({ ...settings, theme: mode })}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 

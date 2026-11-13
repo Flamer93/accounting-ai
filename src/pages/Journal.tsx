@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
 import { accountLabel } from '../chartOfAccounts'
 import { approvedEntries, inPeriod, journalRefMap, validateEntry } from '../accounting'
+import { AccountSelect } from '../components/AccountSelect'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
-import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -13,6 +13,7 @@ import type { JournalEntry } from '../types'
 export function Journal() {
   const {
     entries,
+    accounts,
     period,
     updateEntry,
     approveEntry,
@@ -23,9 +24,9 @@ export function Journal() {
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [showComposer, setShowComposer] = useState(true)
-  const [showOpening, setShowOpening] = useState(false)
   const [showClear, setShowClear] = useState(false)
   const [saveNote, setSaveNote] = useState<string | null>(null)
+  const [highlightAccount, setHighlightAccount] = useState('')
 
   function onSaveForDate() {
     const asOfDate = period.from || new Date().toISOString().slice(0, 10)
@@ -88,20 +89,22 @@ export function Journal() {
     <div>
       <div className="page-head">
         <div>
-          <h1>Journal</h1>
+          <h1 className="page-title">Journal</h1>
           <p>Post entries here. All statements update from the same approved books.</p>
         </div>
         <div className="cta-row">
           <PeriodControls />
+          <label className="field journal-highlight-field">
+            <span>Highlight account</span>
+            <AccountSelect
+              accounts={accounts}
+              value={highlightAccount}
+              onChange={(e) => setHighlightAccount(e.target.value)}
+              placeholder="All accounts"
+            />
+          </label>
           <button className="btn secondary" type="button" onClick={() => setShowComposer((v) => !v)}>
             {showComposer ? 'Hide composer' : 'New entry'}
-          </button>
-          <button
-            className="btn secondary"
-            type="button"
-            onClick={() => setShowOpening((v) => !v)}
-          >
-            {showOpening ? 'Hide openings' : 'Opening balances'}
           </button>
           <button className="btn secondary" type="button" onClick={() => addManualEntry()}>
             Blank draft
@@ -119,13 +122,6 @@ export function Journal() {
         <p className="muted" style={{ marginTop: 0 }}>
           {saveNote}
         </p>
-      )}
-
-      {showOpening && (
-        <div className="panel" style={{ marginBottom: '1rem' }}>
-          <h2 className="settings-subhead">Start month / opening balances</h2>
-          <OpeningBalancesPanel />
-        </div>
       )}
 
       {showClear && (
@@ -159,6 +155,9 @@ export function Journal() {
                 const debitLines = entry.lines.filter((l) => (l.debit || 0) > 0)
                 const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
                 const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
+                const hit =
+                  Boolean(highlightAccount) &&
+                  entry.lines.some((l) => l.accountCode === highlightAccount)
                 return (
                   <FragmentRows
                     key={entry.id}
@@ -167,6 +166,8 @@ export function Journal() {
                     creditLines={creditLines}
                     rowSpan={rowSpan}
                     pr={refs.get(entry.id) || ''}
+                    highlight={hit}
+                    highlightAccount={highlightAccount}
                   />
                 )
               })}
@@ -276,12 +277,16 @@ function FragmentRows({
   debitLines,
   creditLines,
   pr,
+  highlight,
+  highlightAccount,
 }: {
   entry: JournalEntry
   debitLines: JournalEntry['lines']
   creditLines: JournalEntry['lines']
   rowSpan: number
   pr: string
+  highlight: boolean
+  highlightAccount: string
 }) {
   const rows: Array<{ kind: 'debit' | 'credit' | 'narr'; line?: JournalEntry['lines'][0] }> = [
     ...debitLines.map((line) => ({ kind: 'debit' as const, line })),
@@ -291,23 +296,34 @@ function FragmentRows({
 
   return (
     <>
-      {rows.map((row, idx) => (
-        <tr key={`${entry.id}_${idx}`} className={row.kind === 'narr' ? 'journal-narr' : undefined}>
-          <td className="col-date">{idx === 0 ? formatShortDate(entry.date) : ''}</td>
-          <td className={`col-desc ${row.kind === 'credit' ? 'credit-indent' : ''}`}>
-            {row.kind === 'narr'
-              ? `(${entry.memo || entry.vendor || 'Entry'})`
-              : accountLabel(row.line!.accountCode)}
-          </td>
-          <td className="col-pr">{idx === 0 ? pr : ''}</td>
-          <td className="col-amt num">
-            {row.kind === 'debit' && row.line ? formatAmount(row.line.debit || 0) : ''}
-          </td>
-          <td className="col-amt num">
-            {row.kind === 'credit' && row.line ? formatAmount(row.line.credit || 0) : ''}
-          </td>
-        </tr>
-      ))}
+      {rows.map((row, idx) => {
+        const lineHit =
+          Boolean(highlightAccount) && row.line?.accountCode === highlightAccount
+        const classes = [
+          row.kind === 'narr' ? 'journal-narr' : '',
+          highlight ? 'journal-entry-hit' : '',
+          lineHit ? 'journal-line-hit' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+        return (
+          <tr key={`${entry.id}_${idx}`} className={classes || undefined}>
+            <td className="col-date">{idx === 0 ? formatShortDate(entry.date) : ''}</td>
+            <td className={`col-desc ${row.kind === 'credit' ? 'credit-indent' : ''}`}>
+              {row.kind === 'narr'
+                ? `(${entry.memo || entry.vendor || 'Entry'})`
+                : accountLabel(row.line!.accountCode)}
+            </td>
+            <td className="col-pr">{idx === 0 ? pr : ''}</td>
+            <td className="col-amt num">
+              {row.kind === 'debit' && row.line ? formatAmount(row.line.debit || 0) : ''}
+            </td>
+            <td className="col-amt num">
+              {row.kind === 'credit' && row.line ? formatAmount(row.line.credit || 0) : ''}
+            </td>
+          </tr>
+        )
+      })}
     </>
   )
 }

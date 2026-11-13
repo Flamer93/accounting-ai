@@ -125,27 +125,55 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
         </label>
       </div>
 
-      <div className="opening-balances-grid condensed">
-        {grouped().map((group) => (
-          <div key={group.type} className="opening-balances-group">
-            <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
-            {group.accounts.map((account) => (
-              <label key={account.code} className="opening-amount-row">
-                <span>{account.name}</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={amounts[account.code] ?? ''}
-                  onChange={(e) => setAmount(account.code, e.target.value)}
-                  aria-label={`${account.name} opening amount`}
-                />
-              </label>
+      <div className="opening-balances-columns">
+        <div className="opening-balances-grid condensed">
+          {grouped()
+            .filter((g) => g.type === 'asset' || g.type === 'expense')
+            .map((group) => (
+              <div key={group.type} className="opening-balances-group">
+                <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
+                {group.accounts.map((account) => (
+                  <label key={account.code} className="opening-amount-row">
+                    <span>{account.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={amounts[account.code] ?? ''}
+                      onChange={(e) => setAmount(account.code, e.target.value)}
+                      aria-label={`${account.name} opening amount`}
+                    />
+                  </label>
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
+        </div>
+        <div className="opening-balances-grid condensed">
+          {grouped()
+            .filter((g) => g.type === 'liability' || g.type === 'equity' || g.type === 'revenue')
+            .map((group) => (
+              <div key={group.type} className="opening-balances-group">
+                <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
+                {group.accounts.map((account) => (
+                  <label key={account.code} className="opening-amount-row">
+                    <span>{account.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={amounts[account.code] ?? ''}
+                      onChange={(e) => setAmount(account.code, e.target.value)}
+                      aria-label={`${account.name} opening amount`}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+        </div>
       </div>
 
       {!editableAccounts.length && (

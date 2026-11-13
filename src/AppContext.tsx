@@ -608,68 +608,45 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     }) => {
       const errors: string[] = []
       const postedIds: string[] = []
-      let chart = [...accountsRef.current]
+      const chart = accountsRef.current
 
-      const inferType = (code: string): AccountType => {
-        const n = Number(code)
-        if (Number.isFinite(n)) {
-          if (n >= 5000) return 'expense'
-          if (n >= 4000) return 'revenue'
-          if (n >= 3000) return 'equity'
-          if (n >= 2000) return 'liability'
-          return 'asset'
+      const resolveCode = (code: string, name: string | undefined, side: 'debit' | 'credit') => {
+        if (code && chart.some((a) => a.code === code)) return code
+        if (name) {
+          const byName = chart.find((a) => a.name.toLowerCase() === name.trim().toLowerCase())
+          if (byName) return byName.code
+          const fuzzy = chart.find((a) =>
+            a.name.toLowerCase().includes(name.trim().toLowerCase().slice(0, 8)),
+          )
+          if (fuzzy) return fuzzy.code
         }
-        return 'expense'
-      }
-
-      let chartChanged = false
-      const ensureAccount = (code: string, name?: string, type?: AccountType) => {
-        if (!code || chart.some((a) => a.code === code)) return
-        const account: Account = {
-          code,
-          name: (name || `Account ${code}`).trim() || `Account ${code}`,
-          type: type || inferType(code),
+        // Fallbacks within the existing chart only — never create accounts.
+        if (side === 'credit') {
+          return (
+            chart.find((a) => a.code === '1000')?.code ||
+            chart.find((a) => a.type === 'asset')?.code ||
+            chart[0]?.code ||
+            ''
+          )
         }
-        chart = accountsSorted([...chart, account])
-        chartChanged = true
-      }
-
-      for (const suggested of input.suggestedAccounts || []) {
-        const existingByName = chart.find(
-          (a) => a.name.toLowerCase() === suggested.name.trim().toLowerCase(),
+        return (
+          chart.find((a) => a.type === 'expense')?.code ||
+          chart.find((a) => a.code === '5200')?.code ||
+          chart[0]?.code ||
+          ''
         )
-        if (existingByName) continue
-        const code =
-          (suggested.code && !chart.some((a) => a.code === suggested.code) && suggested.code) ||
-          nextAccountCode(suggested.type, chart)
-        ensureAccount(code, suggested.name, suggested.type)
       }
+
+      void input.suggestedAccounts
 
       const resolved = input.entries.map((draft) => {
         if (draft.include === false) return draft
-        const mapNameToCode = (name: string | undefined, fallbackCode: string) => {
-          if (!name) return fallbackCode
-          const hit = chart.find((a) => a.name.toLowerCase() === name.trim().toLowerCase())
-          return hit?.code || fallbackCode
-        }
         return {
           ...draft,
-          debitAccount: mapNameToCode(draft.debitAccountName, draft.debitAccount),
-          creditAccount: mapNameToCode(draft.creditAccountName, draft.creditAccount),
+          debitAccount: resolveCode(draft.debitAccount, draft.debitAccountName, 'debit'),
+          creditAccount: resolveCode(draft.creditAccount, draft.creditAccountName, 'credit'),
         }
       })
-
-      for (const draft of resolved) {
-        if (draft.include === false) continue
-        ensureAccount(draft.debitAccount, draft.debitAccountName)
-        ensureAccount(draft.creditAccount, draft.creditAccountName)
-      }
-
-      if (chartChanged) {
-        accountsRef.current = chart
-        setChartOfAccounts(chart)
-        setAccounts(chart)
-      }
 
       const created: JournalEntry[] = []
       for (const draft of resolved) {
@@ -706,12 +683,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       if (created.length) {
         entriesRef.current = [...created, ...entriesRef.current]
         setEntries((prev) => [...created, ...prev])
-        persistBooks(
-          snapshot({
-            entries: entriesRef.current,
-            accounts: accountsRef.current,
-          }),
-        )
+        persistBooks(snapshot({ entries: entriesRef.current }))
       }
 
       if (!postedIds.length && !errors.length) {

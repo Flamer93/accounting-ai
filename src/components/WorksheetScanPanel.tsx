@@ -166,8 +166,9 @@ export function WorksheetScanPanel() {
         <div>
           <strong>Scan worksheet image</strong>
           <p className="muted">
-            Upload a photo of a transaction list (cheques, invoices, narrative problems). AI drafts
-            journal entries for you to review, then posts them through the books.
+            Upload a photo of a transaction list (cheques, invoices, narrative problems). AI maps
+            lines to your existing chart of accounts only — it will not invent new accounts — then
+            you review and post.
           </p>
         </div>
         <Link className="btn secondary btn-compact" to="/settings">
@@ -215,20 +216,6 @@ export function WorksheetScanPanel() {
 
       {info && <p className="muted">{info}{source ? ` · ${source}` : ''}</p>}
       {error && <p className="error">{error}</p>}
-
-      {suggested.length > 0 && (
-        <div className="worksheet-suggested">
-          <strong>New accounts to open</strong>
-          <ul>
-            {suggested.map((a) => (
-              <li key={`${a.type}-${a.name}`}>
-                {a.name} <span className="muted">({a.type}{a.code ? ` · ${a.code}` : ''})</span>
-              </li>
-            ))}
-          </ul>
-          <p className="muted">Created automatically when you post selected rows.</p>
-        </div>
-      )}
 
       {drafts.length > 0 && (
         <div className="worksheet-review">

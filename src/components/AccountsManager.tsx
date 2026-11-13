@@ -39,21 +39,7 @@ export function AccountsManager() {
     setError(null)
     setMessage(null)
     const used = usageCount(entries, code)
-    if (used > 0) {
-      const force = window.confirm(
-        `“${accountName}” is used on ${used} journal line${used === 1 ? '' : 's'}.\n\nForce-remove anyway?`,
-      )
-      if (!force) return
-      const result = deleteAccount(code, { force: true })
-      if (result.errors.length) {
-        setError(result.errors.join(' · '))
-        return
-      }
-      setMessage(`Removed “${accountName}”.`)
-      return
-    }
-    if (!window.confirm(`Delete “${accountName}”?`)) return
-    const result = deleteAccount(code)
+    const result = deleteAccount(code, used > 0 ? { force: true } : undefined)
     if (result.errors.length) {
       setError(result.errors.join(' · '))
       return

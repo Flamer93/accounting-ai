@@ -115,6 +115,8 @@ function startPackagedServer(port) {
 }
 
 function createWindow(url) {
+  // macOS Electron builds feel snappier without Chromium paint invalidation on every resize.
+  const isMac = process.platform === 'darwin'
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
@@ -124,18 +126,23 @@ function createWindow(url) {
     show: false,
     autoHideMenuBar: true,
     fullscreenable: true,
+    backgroundColor: '#0f1613',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      spellcheck: false,
+      backgroundThrottling: true,
+      enableBlinkFeatures: '',
     },
   })
 
-  // Keep Chromium layout in sync with OS resize / maximize / fullscreen.
-  mainWindow.on('resize', () => {
-    mainWindow?.webContents.invalidate?.()
-  })
+  if (!isMac) {
+    mainWindow.on('resize', () => {
+      mainWindow?.webContents.invalidate?.()
+    })
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()

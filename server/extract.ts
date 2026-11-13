@@ -661,12 +661,14 @@ function worksheetInstructions(
     'Dates must be YYYY-MM-DD.',
     'Split compound narratives that clearly contain two separate payments (two amounts / two cheques) into SEPARATE entries.',
     'Map accounts to this chart when possible: ' + chartPrompt(accounts) + '.',
-    'If the page asks to open a new account (Interest Expense, Kelly Motors payable, Automobile Expense, Advertising, etc.), put it in suggestedAccounts and use a sensible new code in the 5xxx expense / 2xxx liability ranges that does not collide with the chart.',
-    'Cash payments (Cheque …) credit Cash. Purchases on Invoice … usually credit Accounts Payable (or a named payable). Owner withdrawals debit Drawings. Revenue/sales debit Cash or AR and credit revenue.',
+    'CRITICAL: NEVER invent or open new accounts. debitAccount and creditAccount MUST be codes from the chart above only.',
+    'Map narrative titles to the closest existing chart account (e.g. automobile repairs → Travel Expense; telephone/hydro/water → Utilities Expense; owner withdraw → Owner Drawings; invoice purchases → Office Supplies + Accounts Payable).',
+    'If the worksheet says to open a new account, still map to the closest existing chart account and mention the original title only in memo.',
+    'Cash payments (Cheque …) credit Cash. Purchases on Invoice … credit Accounts Payable. Owner withdrawals debit Drawings. Revenue/sales debit Cash or AR and credit revenue.',
     'amount must be a positive number (the transaction amount).',
     'Reply with JSON only (no markdown) shaped as:',
-    '{"rawText":"…","suggestedAccounts":[{"name":"…","type":"expense|liability|asset|equity|revenue","code":"optional"}],"entries":[{"date":"YYYY-MM-DD","memo":"short description","amount":0,"debitAccount":"code","creditAccount":"code","debitAccountName":"…","creditAccountName":"…","vendor":"optional","reference":"Cheque/Invoice # optional"}]}',
-    'Include EVERY transaction you can read. Prefer grounded account titles from the page + chart over inventing unrelated ones.',
+    '{"rawText":"…","suggestedAccounts":[],"entries":[{"date":"YYYY-MM-DD","memo":"short description","amount":0,"debitAccount":"code","creditAccount":"code","debitAccountName":"…","creditAccountName":"…","vendor":"optional","reference":"Cheque/Invoice # optional"}]}',
+    'Include EVERY transaction you can read. suggestedAccounts must always be an empty array.',
   ].join(' ')
 }
 
@@ -726,7 +728,8 @@ function toWorksheetPayload(
   const rawText = typeof parsed.rawText === 'string' ? parsed.rawText.trim().slice(0, 12000) : undefined
   return {
     entries,
-    suggestedAccounts: normalizeSuggestedAccounts(parsed.suggestedAccounts),
+    // Never invent chart accounts from worksheets — map only to the live CoA.
+    suggestedAccounts: [],
     source,
     editRequired,
     rawText,
@@ -743,20 +746,16 @@ export function mockWorksheetExtract(
   return {
     source: 'mock',
     editRequired: true,
-    suggestedAccounts: [
-      { name: 'Automobile Expense', type: 'expense', code: '5600' },
-      { name: 'Interest Expense', type: 'expense', code: '5700' },
-      { name: 'Advertising Expense', type: 'expense', code: '5800' },
-    ],
-    rawText: 'Mock worksheet extract (add a Google or OpenAI API key in Settings for live AI scan).',
+    suggestedAccounts: [],
+    rawText: 'Mock worksheet extract (add a Google or OpenAI API key in Settings for live AI scan). Maps only to existing chart accounts.',
     entries: [
       {
         date: `${y}-12-01`,
         memo: 'Paid automobile repairs, Cheque 125',
         amount: 50,
-        debitAccount: '5600',
+        debitAccount: '5400',
         creditAccount: '1000',
-        debitAccountName: 'Automobile Expense',
+        debitAccountName: 'Travel Expense',
         creditAccountName: 'Cash',
         reference: 'Cheque 125',
       },
@@ -816,18 +815,18 @@ export function mockWorksheetExtract(
         date: `${y}-12-18`,
         memo: 'Bank interest on loan charged to business account',
         amount: 350,
-        debitAccount: '5700',
+        debitAccount: '5500',
         creditAccount: '1000',
-        debitAccountName: 'Interest Expense',
+        debitAccountName: 'Software Expense',
         creditAccountName: 'Cash',
       },
       {
         date: `${y}-12-31`,
         memo: 'Paid salaries for the rest of the month, Cheque 139',
         amount: 1365,
-        debitAccount: '5010',
+        debitAccount: '5000',
         creditAccount: '1000',
-        debitAccountName: 'Salaries Expense',
+        debitAccountName: 'Rent Expense',
         creditAccountName: 'Cash',
         reference: 'Cheque 139',
       },

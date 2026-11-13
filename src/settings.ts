@@ -16,8 +16,11 @@ export type ExtractFieldKey =
   | 'tax'
   | 'category'
 
+export type ThemeMode = 'light' | 'dark'
+
 export interface AppSettings {
   companyName: string
+  theme: ThemeMode
   nav: Record<NavViewKey, boolean>
   extractFields: Record<ExtractFieldKey, boolean>
 }
@@ -49,6 +52,7 @@ export const EXTRACT_FIELD_META: {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   companyName: '',
+  theme: 'light',
   nav: {
     journal: true,
     ledger: true,
@@ -91,7 +95,8 @@ export function normalizeSettings(raw: Partial<AppSettings> | null | undefined):
   }
   const companyName =
     typeof raw?.companyName === 'string' ? raw.companyName.trim() : DEFAULT_SETTINGS.companyName
-  return { companyName, nav, extractFields }
+  const theme: ThemeMode = raw?.theme === 'dark' ? 'dark' : 'light'
+  return { companyName, theme, nav, extractFields }
 }
 
 export function loadSettings(): AppSettings {
