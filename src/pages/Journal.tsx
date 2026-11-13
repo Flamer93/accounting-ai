@@ -11,12 +11,31 @@ import { formatAmount, formatShortDate } from '../moneyFormat'
 import type { JournalEntry } from '../types'
 
 export function Journal() {
-  const { entries, period, updateEntry, approveEntry, deleteEntry, addManualEntry } = useApp()
+  const {
+    entries,
+    period,
+    updateEntry,
+    approveEntry,
+    deleteEntry,
+    addManualEntry,
+    saveJournalForDate,
+  } = useApp()
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [showComposer, setShowComposer] = useState(true)
   const [showOpening, setShowOpening] = useState(false)
   const [showClear, setShowClear] = useState(false)
+  const [saveNote, setSaveNote] = useState<string | null>(null)
+
+  function onSaveForDate() {
+    const asOfDate = period.from || new Date().toISOString().slice(0, 10)
+    const result = saveJournalForDate({ asOfDate })
+    if (result.errors.length) {
+      setSaveNote(result.errors.join(' · '))
+      return
+    }
+    setSaveNote(`Saved journal for ${asOfDate}. Restore anytime in Settings → Saved journals.`)
+  }
 
   const refs = useMemo(() => journalRefMap(entries, period), [entries, period])
   const visible = entries
@@ -87,11 +106,20 @@ export function Journal() {
           <button className="btn secondary" type="button" onClick={() => addManualEntry()}>
             Blank draft
           </button>
+          <button className="btn secondary" type="button" onClick={onSaveForDate}>
+            Save for date
+          </button>
           <button className="btn danger" type="button" onClick={() => setShowClear((v) => !v)}>
             {showClear ? 'Hide clear' : 'Clear journal'}
           </button>
         </div>
       </div>
+
+      {saveNote && (
+        <p className="muted" style={{ marginTop: 0 }}>
+          {saveNote}
+        </p>
+      )}
 
       {showOpening && (
         <div className="panel" style={{ marginBottom: '1rem' }}>

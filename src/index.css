@@ -305,9 +305,11 @@ h3,
   margin: 0;
 }
 
-.settings-block h2 {
+.settings-block h2,
+.settings-subhead {
   margin: 0 0 0.75rem;
   font-size: 1.05rem;
+  font-family: 'Fraunces', serif;
 }
 
 .settings-lead {
@@ -433,13 +435,14 @@ h3,
 
 table.ledger {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.92rem;
 }
 
 table.ledger th,
 table.ledger td {
-  padding: 0.65rem 0.55rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
   text-align: left;
   vertical-align: top;
@@ -812,43 +815,162 @@ code {
 /* Journal classic */
 .journal-classic {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 0.92rem;
+  table-layout: fixed;
 }
 
 .journal-classic th,
 .journal-classic td {
   border: 1px solid #222;
-  padding: 0.4rem 0.55rem;
+  padding: 0.65rem 1.05rem;
   vertical-align: top;
 }
 
 .journal-classic thead th {
   background: #e8e8e8;
   font-weight: 700;
+  padding: 0.75rem 1.05rem;
 }
 
 .journal-classic .col-date {
-  width: 5.5rem;
+  width: 7.5rem;
+  white-space: nowrap;
+}
+
+.journal-classic .col-desc {
+  width: auto;
 }
 
 .journal-classic .col-pr {
-  width: 3.2rem;
+  width: 4.25rem;
   text-align: center;
 }
 
 .journal-classic .col-amt {
-  width: 7.5rem;
+  width: 9.5rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .journal-classic .credit-indent {
-  padding-left: 2rem;
+  padding-left: 2.75rem;
 }
 
 .journal-classic .journal-narr .col-desc {
   font-style: italic;
   color: #333;
-  padding-left: 1.25rem;
+  padding-left: 1.75rem;
+}
+
+.btn-compact {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.82rem;
+}
+
+.coa-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(7rem, 0.7fr) auto;
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+  align-items: center;
+}
+
+.coa-add-row input,
+.coa-add-row select {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 0.4rem 0.55rem;
+  color: var(--ink);
+  width: 100%;
+}
+
+.accounts-table.condensed th,
+.accounts-table.condensed td {
+  padding: 0.4rem 0.65rem;
+  font-size: 0.86rem;
+}
+
+.opening-balances.condensed {
+  gap: 0.65rem;
+}
+
+.opening-meta-row {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.opening-balances-grid.condensed {
+  gap: 0.65rem;
+}
+
+.opening-balances.condensed .opening-balances-group {
+  gap: 0.28rem;
+}
+
+.opening-balances.condensed .opening-balances-type {
+  font-size: 0.75rem;
+  margin-bottom: 0.1rem;
+}
+
+.opening-balances.condensed .opening-amount-row {
+  grid-template-columns: minmax(0, 1fr) 6.25rem;
+  gap: 0.4rem;
+}
+
+.opening-balances.condensed .opening-amount-row > span {
+  font-size: 0.84rem;
+}
+
+.opening-balances.condensed .opening-amount-row input {
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  padding: 0.3rem 0.45rem;
+  width: 100%;
+}
+
+.journal-saves-form {
+  display: grid;
+  grid-template-columns: 9.5rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.journal-saves-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  justify-content: flex-end;
+}
+
+.journal-saves-table th,
+.journal-saves-table td {
+  padding: 0.55rem 0.85rem;
+}
+
+@media (max-width: 720px) {
+  .coa-add-row,
+  .opening-meta-row,
+  .journal-saves-form {
+    grid-template-columns: 1fr;
+  }
+
+  .journal-classic {
+    table-layout: auto;
+  }
+
+  .journal-classic .col-date,
+  .journal-classic .col-pr,
+  .journal-classic .col-amt {
+    width: auto;
+  }
 }
 
 /* General ledger */
@@ -1039,7 +1161,7 @@ code {
 }
 
 .bs-apple td {
-  padding: 0.4rem 1rem;
+  padding: 0.55rem 1.15rem;
 }
 
 .bs-apple tr.alt td {

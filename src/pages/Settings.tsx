@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
+import { JournalSavesPanel } from '../components/JournalSavesPanel'
 import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { NAV_VIEW_META, toggleNavView, type NavViewKey } from '../settings'
 
@@ -27,7 +28,7 @@ export function Settings() {
       <div className="page-head">
         <div>
           <h1>Settings</h1>
-          <p>Company, chart of accounts, opening balances, and navigation.</p>
+          <p>Company, accounts, openings, saved journals, and navigation.</p>
         </div>
       </div>
 
@@ -55,10 +56,12 @@ export function Settings() {
 
       <div className="panel settings-block">
         <h2>Opening balances</h2>
-        <p className="muted settings-lead">
-          Start a period with amounts already in accounts. Posts one balancing journal entry.
-        </p>
         <OpeningBalancesPanel />
+      </div>
+
+      <div className="panel settings-block">
+        <h2>Saved journals</h2>
+        <JournalSavesPanel />
       </div>
 
       <div className="panel settings-block">

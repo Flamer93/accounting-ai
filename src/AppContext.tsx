@@ -23,6 +23,12 @@ import { cascadeRemoveDocument } from './documentCascade'
 import type { AuthMode } from './firebase/types'
 import { loadUserBooks, saveUserBooks, type UserBooks } from './firebase/books'
 import { loadLocalUserBooks, saveLocalUserBooks } from './firebase/localBooks'
+import {
+  deleteJournalSnapshot as removeStoredSnapshot,
+  listJournalSnapshots,
+  saveJournalSnapshot,
+  type JournalSnapshot,
+} from './journalSnapshots'
 import { normalizeReceiptImage } from './normalizeReceiptImage'
 import {
   enabledExtractFields,
@@ -94,6 +100,14 @@ interface AppState {
   clearJournal: () => void
   /** Restore default chart of accounts (does not clear company name). */
   resetAccounts: () => void
+  /** Named journal snapshots keyed by as-of date (local). */
+  journalSnapshots: JournalSnapshot[]
+  saveJournalForDate: (input: { asOfDate: string; name?: string }) => {
+    errors: string[]
+    snapshot?: JournalSnapshot
+  }
+  restoreJournalSnapshot: (id: string) => { errors: string[] }
+  deleteJournalSnapshot: (id: string) => void
   openaiConfigured: boolean | null
   googleKeySaved: boolean
   openaiKeySaved: boolean
@@ -200,6 +214,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false)
   const [booksReady, setBooksReady] = useState(false)
   const [persistError, setPersistError] = useState<string | null>(null)
+  const [journalSnapshots, setJournalSnapshots] = useState<JournalSnapshot[]>([])
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
   const settingsRef = useRef(settings)
@@ -222,6 +237,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     accountsRef.current = accounts
     setChartOfAccounts(accounts)
   }, [accounts])
+
+  useEffect(() => {
+    setJournalSnapshots(listJournalSnapshots(userId))
+  }, [userId])
 
   // Boot this user's books — remount (key=uid) clears prior session state.
   useEffect(() => {
@@ -733,6 +752,54 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     persistBooks(snapshot({ accounts: defaults }))
   }, [persistBooks, snapshot])
 
+  const saveJournalForDate = useCallback(
+    (input: { asOfDate: string; name?: string }) => {
+      try {
+        const snap = saveJournalSnapshot(userId, {
+          asOfDate: input.asOfDate,
+          name: input.name,
+          entries: entriesRef.current,
+          accounts: accountsRef.current,
+        })
+        setJournalSnapshots(listJournalSnapshots(userId))
+        return { errors: [] as string[], snapshot: snap }
+      } catch (err) {
+        return {
+          errors: [err instanceof Error ? err.message : 'Could not save journal'],
+        }
+      }
+    },
+    [userId],
+  )
+
+  const restoreJournalSnapshot = useCallback(
+    (id: string) => {
+      const snap = listJournalSnapshots(userId).find((s) => s.id === id)
+      if (!snap) return { errors: ['Saved journal not found'] }
+      const nextEntries = structuredClone(snap.entries)
+      const nextAccounts = structuredClone(snap.accounts)
+      entriesRef.current = nextEntries
+      accountsRef.current = nextAccounts
+      setEntries(nextEntries)
+      setAccounts(nextAccounts)
+      setChartOfAccounts(nextAccounts)
+      persistBooks(snapshot({ entries: nextEntries, accounts: nextAccounts }))
+      if (snap.asOfDate) {
+        setPeriod((prev) => ({ ...prev, from: snap.asOfDate }))
+      }
+      return { errors: [] as string[] }
+    },
+    [persistBooks, snapshot, userId],
+  )
+
+  const deleteJournalSnapshot = useCallback(
+    (id: string) => {
+      removeStoredSnapshot(userId, id)
+      setJournalSnapshots(listJournalSnapshots(userId))
+    },
+    [userId],
+  )
+
   const value = useMemo(
     () => ({
       documents,
@@ -757,6 +824,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       postOpeningBalances,
       clearJournal,
       resetAccounts,
+      journalSnapshots,
+      saveJournalForDate,
+      restoreJournalSnapshot,
+      deleteJournalSnapshot,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,
@@ -788,6 +859,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       postOpeningBalances,
       clearJournal,
       resetAccounts,
+      journalSnapshots,
+      saveJournalForDate,
+      restoreJournalSnapshot,
+      deleteJournalSnapshot,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,
