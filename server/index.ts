@@ -4,7 +4,7 @@ import multer from 'multer'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { extractFromUpload } from './extract.ts'
+import { extractFromUpload, extractWorksheetFromUpload } from './extract.ts'
 
 /** Works under tsx (ESM) and the Electron CJS bundle (no import.meta). */
 function serverDir(): string {
@@ -163,6 +163,65 @@ export async function createApp() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Extract failed'
       console.error('Extract failed:', message)
+      const timedOut = /timed out/i.test(message)
+      res.status(timedOut ? 504 : 500).json({ error: message })
+    }
+  })
+
+  app.post('/api/extract-worksheet', upload.single('file'), async (req, res) => {
+    try {
+      const file = req.file
+      let dataUrl = typeof req.body?.dataUrl === 'string' ? req.body.dataUrl : ''
+      let filename = typeof req.body?.filename === 'string' ? req.body.filename : 'worksheet'
+      let size = Number(req.body?.size || 0)
+
+      if (file) {
+        filename = file.originalname || filename
+        size = file.size
+        dataUrl = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`
+      }
+
+      if (!dataUrl) {
+        res.status(400).json({ error: 'Missing file or dataUrl' })
+        return
+      }
+
+      let accounts: unknown = req.body?.accounts
+      if (typeof accounts === 'string') {
+        try {
+          accounts = JSON.parse(accounts)
+        } catch {
+          accounts = undefined
+        }
+      }
+
+      const defaultYear =
+        typeof req.body?.defaultYear === 'string' && /^\d{4}$/.test(req.body.defaultYear)
+          ? req.body.defaultYear
+          : String(new Date().getFullYear())
+
+      const googleApiKey = String(req.header('x-google-api-key') || req.body?.googleApiKey || '').trim()
+      const openaiApiKey = String(req.header('x-openai-api-key') || req.body?.openaiApiKey || '').trim()
+
+      const result = await withTimeout(
+        extractWorksheetFromUpload({
+          filename,
+          size: size || dataUrl.length,
+          dataUrl,
+          accounts: Array.isArray(accounts)
+            ? (accounts as Array<{ code: string; name: string; type: string }>)
+            : undefined,
+          defaultYear,
+          googleApiKey: googleApiKey || undefined,
+          openaiApiKey: openaiApiKey || undefined,
+        }),
+        190_000,
+        'Worksheet extract',
+      )
+      res.json(result)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Worksheet extract failed'
+      console.error('Worksheet extract failed:', message)
       const timedOut = /timed out/i.test(message)
       res.status(timedOut ? 504 : 500).json({ error: message })
     }

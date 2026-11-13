@@ -36,7 +36,17 @@ import {
   type AppSettings,
 } from './settings'
 import { uid } from './storage'
-import type { Account, AccountType, DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
+import type {
+  Account,
+  AccountType,
+  DocumentRecord,
+  ExtractResult,
+  JournalEntry,
+  PeriodFilter,
+  WorksheetExtractResult,
+  WorksheetEntryDraft,
+  WorksheetSuggestedAccount,
+} from './types'
 import {
   clearGoogleApiKey,
   clearOpenAiApiKey,
@@ -67,6 +77,20 @@ interface AppState {
   ) => { errors: string[]; blocked?: boolean; usageCount?: number }
   addDocument: (file: File, dataUrl: string) => DocumentRecord
   extractDocument: (documentId: string) => Promise<ExtractOutcome>
+  /**
+   * Scan a worksheet / narrative transaction-list image into draft journal rows.
+   * Does not post — caller reviews then calls `postWorksheetEntries`.
+   */
+  extractWorksheet: (input: {
+    dataUrl: string
+    filename: string
+    defaultYear?: string
+  }) => Promise<WorksheetExtractResult>
+  /** Ensure suggested accounts exist, then post selected worksheet drafts as approved entries. */
+  postWorksheetEntries: (input: {
+    entries: WorksheetEntryDraft[]
+    suggestedAccounts?: WorksheetSuggestedAccount[]
+  }) => { errors: string[]; postedIds: string[] }
   deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
   /** Pass `override` when approving unsaved journal editor edits (avoids stale-state race). */
@@ -516,6 +540,188 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     [persistBooks, snapshot, userId],
   )
 
+  const extractWorksheet = useCallback(
+    async (input: { dataUrl: string; filename: string; defaultYear?: string }) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const googleKey = loadGoogleApiKey(userId)
+      const openaiKey = loadOpenAiApiKey(userId)
+      if (googleKey) headers['X-Google-Api-Key'] = googleKey
+      if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
+
+      const chart = accountsRef.current.map((a) => ({
+        code: a.code,
+        name: a.name,
+        type: a.type,
+      }))
+      const defaultYear =
+        input.defaultYear ||
+        period.to?.slice(0, 4) ||
+        period.from?.slice(0, 4) ||
+        String(new Date().getFullYear())
+
+      const res = await apiFetch(
+        '/api/extract-worksheet',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            dataUrl: input.dataUrl,
+            filename: input.filename,
+            size: input.dataUrl.length,
+            accounts: chart,
+            defaultYear,
+            ...(googleKey ? { googleApiKey: googleKey } : {}),
+            ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
+          }),
+        },
+        195_000,
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(
+          (err as { error?: string }).error || `Worksheet extract failed (HTTP ${res.status})`,
+        )
+      }
+      const result = (await res.json()) as WorksheetExtractResult
+      if ((googleKey || openaiKey) && result.source === 'mock') {
+        throw new Error(
+          'An AI key was sent but the server returned a mock worksheet extract. Check /api/extract-worksheet.',
+        )
+      }
+      return {
+        ...result,
+        entries: (result.entries || []).map((e) => ({
+          ...e,
+          id: e.id || uid('ws'),
+          include: e.include !== false,
+        })),
+        suggestedAccounts: result.suggestedAccounts || [],
+      }
+    },
+    [period.from, period.to, userId],
+  )
+
+  const postWorksheetEntries = useCallback(
+    (input: {
+      entries: WorksheetEntryDraft[]
+      suggestedAccounts?: WorksheetSuggestedAccount[]
+    }) => {
+      const errors: string[] = []
+      const postedIds: string[] = []
+      let chart = [...accountsRef.current]
+
+      const inferType = (code: string): AccountType => {
+        const n = Number(code)
+        if (Number.isFinite(n)) {
+          if (n >= 5000) return 'expense'
+          if (n >= 4000) return 'revenue'
+          if (n >= 3000) return 'equity'
+          if (n >= 2000) return 'liability'
+          return 'asset'
+        }
+        return 'expense'
+      }
+
+      let chartChanged = false
+      const ensureAccount = (code: string, name?: string, type?: AccountType) => {
+        if (!code || chart.some((a) => a.code === code)) return
+        const account: Account = {
+          code,
+          name: (name || `Account ${code}`).trim() || `Account ${code}`,
+          type: type || inferType(code),
+        }
+        chart = accountsSorted([...chart, account])
+        chartChanged = true
+      }
+
+      for (const suggested of input.suggestedAccounts || []) {
+        const existingByName = chart.find(
+          (a) => a.name.toLowerCase() === suggested.name.trim().toLowerCase(),
+        )
+        if (existingByName) continue
+        const code =
+          (suggested.code && !chart.some((a) => a.code === suggested.code) && suggested.code) ||
+          nextAccountCode(suggested.type, chart)
+        ensureAccount(code, suggested.name, suggested.type)
+      }
+
+      const resolved = input.entries.map((draft) => {
+        if (draft.include === false) return draft
+        const mapNameToCode = (name: string | undefined, fallbackCode: string) => {
+          if (!name) return fallbackCode
+          const hit = chart.find((a) => a.name.toLowerCase() === name.trim().toLowerCase())
+          return hit?.code || fallbackCode
+        }
+        return {
+          ...draft,
+          debitAccount: mapNameToCode(draft.debitAccountName, draft.debitAccount),
+          creditAccount: mapNameToCode(draft.creditAccountName, draft.creditAccount),
+        }
+      })
+
+      for (const draft of resolved) {
+        if (draft.include === false) continue
+        ensureAccount(draft.debitAccount, draft.debitAccountName)
+        ensureAccount(draft.creditAccount, draft.creditAccountName)
+      }
+
+      if (chartChanged) {
+        accountsRef.current = chart
+        setChartOfAccounts(chart)
+        setAccounts(chart)
+      }
+
+      const created: JournalEntry[] = []
+      for (const draft of resolved) {
+        if (draft.include === false) continue
+        const amount = Math.round((Number(draft.amount) + Number.EPSILON) * 100) / 100
+        const memo = [draft.memo, draft.reference].filter(Boolean).join(' — ')
+        const entry: JournalEntry = {
+          id: uid('je'),
+          date: draft.date,
+          memo: memo || 'Worksheet entry',
+          vendor: draft.vendor,
+          lines: [
+            { accountCode: draft.debitAccount, debit: amount, credit: 0 },
+            { accountCode: draft.creditAccount, debit: 0, credit: amount },
+          ],
+          status: 'approved',
+          editRequired: false,
+          source: 'extract',
+          createdAt: new Date().toISOString(),
+        }
+        const entryErrors = validateEntry(entry)
+        if (draft.debitAccount === draft.creditAccount) {
+          entryErrors.push('Debit and credit accounts must differ')
+        }
+        if (!(amount > 0)) entryErrors.push('Amount must be greater than zero')
+        if (entryErrors.length) {
+          errors.push(`${draft.memo || draft.date}: ${entryErrors.join(', ')}`)
+          continue
+        }
+        created.push(entry)
+        postedIds.push(entry.id)
+      }
+
+      if (created.length) {
+        entriesRef.current = [...created, ...entriesRef.current]
+        setEntries((prev) => [...created, ...prev])
+        persistBooks(
+          snapshot({
+            entries: entriesRef.current,
+            accounts: accountsRef.current,
+          }),
+        )
+      }
+
+      if (!postedIds.length && !errors.length) {
+        errors.push('No transactions selected to post.')
+      }
+      return { errors, postedIds }
+    },
+    [persistBooks, snapshot],
+  )
+
   const updateEntry = useCallback((entry: JournalEntry) => {
     const errors = validateEntry(entry)
     if (errors.length) return errors
@@ -815,6 +1021,8 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteAccount,
       addDocument,
       extractDocument,
+      extractWorksheet,
+      postWorksheetEntries,
       deleteDocument,
       updateEntry,
       approveEntry,
@@ -850,6 +1058,8 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteAccount,
       addDocument,
       extractDocument,
+      extractWorksheet,
+      postWorksheetEntries,
       deleteDocument,
       updateEntry,
       approveEntry,

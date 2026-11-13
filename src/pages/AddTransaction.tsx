@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 import { useApp } from '../AppContext'
 import { AccountSelect } from '../components/AccountSelect'
+import { WorksheetScanPanel } from '../components/WorksheetScanPanel'
 import type { Account } from '../types'
 
 type TxKind =
@@ -117,6 +118,10 @@ export function AddTransaction() {
             so every statement stays in sync.
           </p>
         </div>
+      </div>
+
+      <div style={{ marginBottom: '0.85rem' }}>
+        <WorksheetScanPanel />
       </div>
 
       <div className="panel add-tx-panel">

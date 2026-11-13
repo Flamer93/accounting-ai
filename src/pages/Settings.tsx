@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
+import { ApiKeysPanel } from '../components/ApiKeysPanel'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
 import { JournalSavesPanel } from '../components/JournalSavesPanel'
 import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
@@ -28,8 +29,13 @@ export function Settings() {
       <div className="page-head">
         <div>
           <h1>Settings</h1>
-          <p>Company, accounts, openings, saved journals, and navigation.</p>
+          <p>Company, AI API keys, accounts, openings, saved journals, and navigation.</p>
         </div>
+      </div>
+
+      <div className="panel settings-block">
+        <h2>AI API keys</h2>
+        <ApiKeysPanel />
       </div>
 
       <div className="panel settings-block">
