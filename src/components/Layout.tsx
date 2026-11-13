@@ -20,6 +20,12 @@ export function Layout() {
           {settings.companyName.trim() || 'Accounting AI'}
         </NavLink>
         <nav className="nav" aria-label="Primary">
+          <NavLink
+            to="/add-transaction"
+            className={({ isActive }) => `nav-cta${isActive ? ' active' : ''}`}
+          >
+            Add a transaction
+          </NavLink>
           {links.map((link) => (
             <NavLink
               key={link.to}

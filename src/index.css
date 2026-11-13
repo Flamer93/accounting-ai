@@ -166,6 +166,41 @@ h3,
   border-color: var(--leaf-deep);
 }
 
+.nav a.nav-cta {
+  padding: 0.55rem 1.05rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #f7fbf8;
+  background: var(--leaf);
+  border-color: var(--leaf);
+  box-shadow: 0 4px 14px rgba(47, 107, 85, 0.28);
+}
+
+.nav a.nav-cta:hover {
+  color: #f7fbf8;
+  background: var(--leaf-deep);
+  border-color: var(--leaf-deep);
+}
+
+.nav a.nav-cta.active {
+  background: var(--leaf-deep);
+  border-color: var(--leaf-deep);
+  box-shadow: 0 2px 10px rgba(30, 74, 59, 0.35);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .hero {
   position: relative;
   overflow: hidden;
@@ -693,12 +728,12 @@ code {
 
 .stmt-head {
   text-align: center;
-  padding: 0.85rem 1rem;
+  padding: 1.05rem 1rem;
 }
 
 .stmt-head .stmt-company {
   font-weight: 700;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
 }
 
 .stmt-head .stmt-title {
@@ -708,37 +743,27 @@ code {
 
 .stmt-head .stmt-period {
   font-size: 0.95rem;
+  opacity: 0.92;
 }
 
-.stmt-head.green-block {
-  background: #4caf50;
-  color: #111;
+/* One shared header treatment for every books document */
+.stmt-head.stmt-unified,
+.stmt-head.green-block,
+.stmt-head.ledger-green,
+.stmt-head.apple,
+.stmt-head.plain {
+  background: linear-gradient(125deg, var(--leaf-deep), var(--leaf));
+  color: #f4faf6;
+  border-bottom: 1px solid rgba(21, 32, 27, 0.18);
 }
 
-.stmt-head.ledger-green {
-  background: #438d48;
-  color: #fff;
-  padding: 1.1rem 1rem;
-}
-
+.stmt-head.stmt-unified .stmt-company,
 .stmt-head.ledger-green .stmt-company {
-  font-size: 1.35rem;
-}
-
-.stmt-head.apple {
-  background: #fff;
-  border-bottom: 1px solid #e5e5e5;
-  padding: 1.25rem 1rem 1rem;
+  font-size: 1.3rem;
 }
 
 .stmt-head.apple .stmt-title {
-  letter-spacing: 0.04em;
-  font-size: 0.95rem;
-}
-
-.stmt-head.plain {
-  background: #f0f0f0;
-  border-bottom: 1px solid #222;
+  letter-spacing: 0.02em;
 }
 
 .muted-italic {
@@ -869,13 +894,14 @@ code {
 
 .journal-classic th,
 .journal-classic td {
-  border: 1px solid #222;
+  border: 1px solid rgba(30, 74, 59, 0.35);
   padding: 0.85rem 2.35rem;
   vertical-align: top;
 }
 
 .journal-classic thead th {
-  background: #e8e8e8;
+  background: rgba(47, 107, 85, 0.12);
+  color: var(--leaf-deep);
   font-weight: 700;
   padding: 0.95rem 2.35rem;
   letter-spacing: 0.03em;
@@ -1048,7 +1074,7 @@ code {
   gap: 1rem 1.5rem;
   padding: 0.75rem 1rem;
   align-items: end;
-  border-bottom: 1px solid #438d48;
+  border-bottom: 1px solid rgba(30, 74, 59, 0.35);
   font-size: 0.92rem;
 }
 
@@ -1069,12 +1095,12 @@ code {
 
 .gl-table th,
 .gl-table td {
-  border: 1px solid #438d48;
+  border: 1px solid rgba(30, 74, 59, 0.45);
   padding: 0.35rem 0.45rem;
 }
 
 .gl-table thead th {
-  background: #f3faf4;
+  background: rgba(47, 107, 85, 0.1);
   font-weight: 700;
 }
 
@@ -1213,9 +1239,10 @@ code {
   border-bottom: 4px double #111;
 }
 
-/* Balance sheet Apple condensed */
+/* Balance sheet sections — same leaf tint as other documents */
 .bs-band {
-  background: #e8e8e8;
+  background: rgba(47, 107, 85, 0.12);
+  color: var(--leaf-deep);
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: 0.45rem 1rem;
@@ -1280,5 +1307,79 @@ code {
 
   .ledger-period {
     margin-left: 0;
+  }
+}
+
+/* Add a transaction */
+.add-tx-panel {
+  max-width: 960px;
+}
+
+.add-tx {
+  display: grid;
+  gap: 1rem;
+}
+
+.tx-kinds {
+  border: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.tx-kind {
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.7rem 0.8rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+
+.tx-kind strong {
+  font-size: 0.9rem;
+}
+
+.tx-kind span {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.tx-kind:hover {
+  border-color: rgba(47, 107, 85, 0.45);
+  background: rgba(47, 107, 85, 0.06);
+}
+
+.tx-kind.active {
+  border-color: var(--leaf);
+  background: rgba(47, 107, 85, 0.12);
+  box-shadow: 0 0 0 1px rgba(47, 107, 85, 0.25);
+}
+
+.add-tx-preview {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .tx-kinds {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .tx-kinds {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav a.nav-cta {
+    width: 100%;
+    text-align: center;
   }
 }

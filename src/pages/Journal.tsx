@@ -142,7 +142,7 @@ export function Journal() {
       )}
 
       <div className="books-sheet journal-sheet">
-        <StatementHeader title="General Journal" variant="plain" />
+        <StatementHeader title="General Journal" />
         <div className="table-wrap">
           <table className="journal-classic">
             <thead>

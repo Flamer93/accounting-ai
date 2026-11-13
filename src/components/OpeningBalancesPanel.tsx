@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
 import { formatMoney } from '../accounting'
 import {
-  ACCOUNT_TYPE_LABELS,
+  ACCOUNT_TYPE_GROUP_LABELS,
   OPENING_BALANCE_EQUITY_NAME,
   accountsSorted,
   ensureOpeningBalanceEquity,
@@ -128,7 +128,7 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
       <div className="opening-balances-grid condensed">
         {grouped().map((group) => (
           <div key={group.type} className="opening-balances-group">
-            <h3 className="opening-balances-type">{ACCOUNT_TYPE_LABELS[group.type]}</h3>
+            <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
             {group.accounts.map((account) => (
               <label key={account.code} className="opening-amount-row">
                 <span>{account.name}</span>

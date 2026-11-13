@@ -4,6 +4,7 @@ import {
   buildGeneralLedger,
   journalRefMap,
 } from '../accounting'
+import { AccountSelect } from '../components/AccountSelect'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -11,11 +12,14 @@ import { useApp } from '../AppContext'
 import { formatAmount, formatShortDate } from '../moneyFormat'
 
 export function Ledger() {
-  const { entries, period } = useApp()
+  const { entries, period, accounts } = useApp()
   const ledger = buildGeneralLedger(entries, period)
   const refs = useMemo(() => journalRefMap(entries, period), [entries, period])
   const [focus, setFocus] = useState(ledger[0]?.code || '1000')
   const account = ledger.find((a) => a.code === focus) || ledger[0]
+  const selectAccounts = ledger.length
+    ? ledger.map((a) => ({ code: a.code, name: a.name, type: a.type }))
+    : accounts
 
   return (
     <div>
@@ -37,18 +41,15 @@ export function Ledger() {
       </div>
 
       <div className="books-sheet ledger-sheet">
-        <StatementHeader title="General Ledger" variant="ledger" />
+        <StatementHeader title="General Ledger" />
         <div className="ledger-meta">
           <label>
             Account Name{' '}
-            <select value={account?.code || focus} onChange={(e) => setFocus(e.target.value)}>
-              {ledger.map((a) => (
-                <option key={a.code} value={a.code}>
-                  {a.name}
-                </option>
-              ))}
-              {!ledger.length && <option value={focus}>Cash</option>}
-            </select>
+            <AccountSelect
+              accounts={selectAccounts}
+              value={account?.code || focus}
+              onChange={(e) => setFocus(e.target.value)}
+            />
           </label>
           <div>
             <strong>Account number:</strong> {account?.code || '—'}

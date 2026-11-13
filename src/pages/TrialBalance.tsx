@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { buildTrialBalance } from '../accounting'
 import { accountLabel } from '../chartOfAccounts'
+import { AccountSelect } from '../components/AccountSelect'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
@@ -76,14 +77,12 @@ export function TrialBalance() {
           <div className="post-entry-grid">
             <label className="field">
               <span>Account</span>
-              <select value={adjustCode} onChange={(e) => setAdjustCode(e.target.value)}>
-                <option value="">Select…</option>
-                {accounts.map((a) => (
-                  <option key={a.code} value={a.code}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              <AccountSelect
+                accounts={accounts}
+                value={adjustCode}
+                onChange={(e) => setAdjustCode(e.target.value)}
+                placeholder="Select…"
+              />
             </label>
             <label className="field">
               <span>Side</span>
@@ -107,13 +106,11 @@ export function TrialBalance() {
             </label>
             <label className="field">
               <span>Offset account</span>
-              <select value={offset} onChange={(e) => setOffset(e.target.value)}>
-                {accounts.map((a) => (
-                  <option key={a.code} value={a.code}>
-                    {a.name}
-                  </option>
-                ))}
-              </select>
+              <AccountSelect
+                accounts={accounts}
+                value={offset}
+                onChange={(e) => setOffset(e.target.value)}
+              />
             </label>
           </div>
           <div className="cta-row">
@@ -126,7 +123,7 @@ export function TrialBalance() {
       </div>
 
       <div className="books-sheet tb-sheet">
-        <StatementHeader title="Unadjusted Trial Balance" variant="green" asOf />
+        <StatementHeader title="Unadjusted Trial Balance" asOf />
         <table className="tb-classic">
           <thead>
             <tr>

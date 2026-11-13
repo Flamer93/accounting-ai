@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { buildGeneralLedger } from '../accounting'
+import { AccountSelect } from '../components/AccountSelect'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { useApp } from '../AppContext'
 import { formatAmount, formatShortDate } from '../moneyFormat'
 
 export function TAccounts() {
-  const { entries, period } = useApp()
+  const { entries, period, accounts } = useApp()
   const ledger = buildGeneralLedger(entries, period)
   const [focus, setFocus] = useState(ledger[0]?.code || '1000')
+  const selectAccounts = ledger.length
+    ? ledger.map((a) => ({ code: a.code, name: a.name, type: a.type }))
+    : accounts
 
   return (
     <div>
@@ -29,13 +33,11 @@ export function TAccounts() {
         />
         <label className="field" style={{ marginTop: '0.75rem', maxWidth: 280 }}>
           <span>Highlight account</span>
-          <select value={focus} onChange={(e) => setFocus(e.target.value)}>
-            {ledger.map((a) => (
-              <option key={a.code} value={a.code}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <AccountSelect
+            accounts={selectAccounts}
+            value={focus}
+            onChange={(e) => setFocus(e.target.value)}
+          />
         </label>
       </div>
 

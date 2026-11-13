@@ -11,11 +11,11 @@ export function Home() {
         <h1>{company || 'Your books'}</h1>
         <p>Post once in the journal. Ledger, trial balance, and statements stay in sync.</p>
         <div className="cta-row">
-          <Link className="btn" to="/journal">
-            Open journal
+          <Link className="btn" to="/add-transaction">
+            Add a transaction
           </Link>
-          <Link className="btn ghost" to="/settings">
-            Settings
+          <Link className="btn ghost" to="/journal">
+            Open journal
           </Link>
         </div>
       </div>

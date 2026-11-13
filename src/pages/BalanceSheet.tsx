@@ -33,7 +33,7 @@ export function BalanceSheet() {
       </div>
 
       <div className="books-sheet bs-sheet">
-        <StatementHeader title="CONDENSED BALANCE SHEET" variant="apple" asOf />
+        <StatementHeader title="Condensed Balance Sheet" asOf />
 
         <div className="bs-band">ASSETS:</div>
         <table className="bs-apple">

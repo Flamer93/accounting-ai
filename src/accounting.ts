@@ -255,15 +255,15 @@ export function journalRefMap(entries: JournalEntry[], period?: PeriodFilter): M
 export function accountTypeLabel(type: AccountType): string {
   switch (type) {
     case 'asset':
-      return 'Asset'
+      return 'Assets'
     case 'liability':
-      return 'Liability'
+      return 'Liabilities'
     case 'equity':
-      return 'Equity'
+      return "Owner's Equity"
     case 'revenue':
       return 'Revenue'
     case 'expense':
-      return 'Expense'
+      return 'Expenses'
     default:
       return type
   }

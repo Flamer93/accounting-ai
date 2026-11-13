@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from './AppContext'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './firebase/AuthContext'
+import { AddTransaction } from './pages/AddTransaction'
 import { BalanceSheet } from './pages/BalanceSheet'
 import { GuardedView } from './pages/GuardedView'
 import { Home } from './pages/Home'
@@ -22,6 +23,7 @@ function AuthenticatedApp() {
           <Route element={<Layout />}>
             <Route index element={<Home />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="add-transaction" element={<AddTransaction />} />
             <Route
               path="journal"
               element={

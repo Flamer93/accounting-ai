@@ -34,7 +34,7 @@ export function IncomeStatement() {
       </div>
 
       <div className="books-sheet is-sheet">
-        <StatementHeader title="Income Statement" variant="green" yearEnded />
+        <StatementHeader title="Income Statement" yearEnded />
         <table className="is-classic">
           <tbody>
             <tr>
