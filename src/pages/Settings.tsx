@@ -1,27 +1,17 @@
-import { useEffect, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
 import { AccountsManager } from '../components/AccountsManager'
 import { ApiKeysPanel } from '../components/ApiKeysPanel'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
+import { CompaniesPanel } from '../components/CompaniesPanel'
 import { JournalSavesPanel } from '../components/JournalSavesPanel'
 import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { NAV_VIEW_META, toggleNavView, type NavViewKey, type ThemeMode } from '../settings'
 
 export function Settings() {
   const { settings, updateSettings } = useApp()
-  const [companyDraft, setCompanyDraft] = useState(settings.companyName)
-
-  useEffect(() => {
-    setCompanyDraft(settings.companyName)
-  }, [settings.companyName])
 
   function onNavToggle(key: NavViewKey, enabled: boolean) {
     updateSettings(toggleNavView(settings, key, enabled))
-  }
-
-  function onSaveCompany(e: FormEvent) {
-    e.preventDefault()
-    updateSettings({ ...settings, companyName: companyDraft.trim() || settings.companyName })
   }
 
   return (
@@ -29,13 +19,18 @@ export function Settings() {
       <div className="page-head">
         <div>
           <h1>Settings</h1>
-          <p>Company, AI API keys, accounts, openings, saved journals, and navigation.</p>
+          <p>Companies, AI API keys, accounts, openings, saved journals, and navigation.</p>
         </div>
       </div>
 
       <div className="panel settings-block">
+        <h2>Companies</h2>
+        <CompaniesPanel />
+      </div>
+
+      <div className="panel settings-block">
         <h2>Appearance</h2>
-        <p className="muted settings-lead">Switch between light and dark for the whole app.</p>
+        <p className="muted settings-lead">Switch between light and dark for this company.</p>
         <div className="theme-toggle-row" role="group" aria-label="Theme">
           {([
             ['light', 'Light'],
@@ -56,23 +51,6 @@ export function Settings() {
       <div className="panel settings-block">
         <h2>AI API keys</h2>
         <ApiKeysPanel />
-      </div>
-
-      <div className="panel settings-block">
-        <h2>Company</h2>
-        <form className="settings-form" onSubmit={onSaveCompany}>
-          <label className="field">
-            <span>Company name</span>
-            <input
-              value={companyDraft}
-              onChange={(e) => setCompanyDraft(e.target.value)}
-              placeholder="Company name"
-            />
-          </label>
-          <button type="submit" className="btn">
-            Save
-          </button>
-        </form>
       </div>
 
       <div className="panel settings-block">

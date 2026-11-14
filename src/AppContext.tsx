@@ -223,11 +223,13 @@ function applyBooks(books: UserBooks, setters: {
 type AppProviderProps = {
   children: ReactNode
   userId: string
+  /** Isolates books / settings / journal saves per company. */
+  companyId: string
   authMode: AuthMode
   firestore: Firestore | null
 }
 
-export function AppProvider({ children, userId, authMode, firestore }: AppProviderProps) {
+export function AppProvider({ children, userId, companyId, authMode, firestore }: AppProviderProps) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -263,10 +265,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
   }, [accounts])
 
   useEffect(() => {
-    setJournalSnapshots(listJournalSnapshots(userId))
-  }, [userId])
+    setJournalSnapshots(listJournalSnapshots(companyId))
+  }, [companyId])
 
-  // Boot this user's books — remount (key=uid) clears prior session state.
+  // Boot this company's books — remount (key=companyId) clears prior session state.
   useEffect(() => {
     let cancelled = false
     setBooksReady(false)
@@ -283,7 +285,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
         if (authMode === 'firebase' && firestore) {
           books = await loadUserBooks(firestore, userId)
         } else {
-          books = loadLocalUserBooks(userId)
+          books = loadLocalUserBooks(companyId)
         }
         if (cancelled) return
         applyBooks(books, {
@@ -303,7 +305,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
         if (cancelled) return
         console.error('Failed to load user books', err)
         setPersistError(err instanceof Error ? err.message : 'Failed to load books')
-        const fallback = loadLocalUserBooks(userId)
+        const fallback = loadLocalUserBooks(companyId)
         applyBooks(fallback, {
           setDocuments,
           setEntries,
@@ -334,12 +336,12 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       cancelled = true
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
-  }, [userId, authMode, firestore])
+  }, [userId, companyId, authMode, firestore])
 
   const persistBooks = useCallback(
     (next: UserBooks) => {
-      // Always keep a uid-scoped local mirror so account switches stay isolated offline.
-      saveLocalUserBooks(userId, next)
+      // Company-scoped local mirror — each company keeps its own books offline.
+      saveLocalUserBooks(companyId, next)
       if (authMode !== 'firebase' || !firestore) return
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
@@ -351,7 +353,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
           })
       }, 450)
     },
-    [authMode, firestore, userId],
+    [authMode, firestore, userId, companyId],
   )
 
   const snapshot = useCallback(
@@ -933,13 +935,17 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
   const saveJournalForDate = useCallback(
     (input: { asOfDate: string; name?: string }) => {
       try {
-        const snap = saveJournalSnapshot(userId, {
+        if (!booksReady) {
+          return { errors: ['Books are still loading — try again in a moment.'] }
+        }
+        const snap = saveJournalSnapshot(companyId, {
           asOfDate: input.asOfDate,
           name: input.name,
           entries: entriesRef.current,
           accounts: accountsRef.current,
         })
-        setJournalSnapshots(listJournalSnapshots(userId))
+        setJournalSnapshots(listJournalSnapshots(companyId))
+        void window.accountingDesktop?.storageFlush?.()
         return { errors: [] as string[], snapshot: snap }
       } catch (err) {
         return {
@@ -947,15 +953,22 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
         }
       }
     },
-    [userId],
+    [companyId, booksReady],
   )
 
   const restoreJournalSnapshot = useCallback(
     (id: string) => {
-      const snap = listJournalSnapshots(userId).find((s) => s.id === id)
+      const snap = listJournalSnapshots(companyId).find((s) => s.id === id)
       if (!snap) return { errors: ['Saved journal not found'] }
-      const nextEntries = structuredClone(snap.entries)
-      const nextAccounts = structuredClone(snap.accounts)
+      let nextEntries: JournalEntry[]
+      let nextAccounts: Account[]
+      try {
+        nextEntries = structuredClone(snap.entries)
+        nextAccounts = structuredClone(snap.accounts)
+      } catch {
+        nextEntries = JSON.parse(JSON.stringify(snap.entries)) as JournalEntry[]
+        nextAccounts = JSON.parse(JSON.stringify(snap.accounts)) as Account[]
+      }
       entriesRef.current = nextEntries
       accountsRef.current = nextAccounts
       setEntries(nextEntries)
@@ -967,15 +980,15 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       }
       return { errors: [] as string[] }
     },
-    [persistBooks, snapshot, userId],
+    [persistBooks, snapshot, companyId],
   )
 
   const deleteJournalSnapshot = useCallback(
     (id: string) => {
-      removeStoredSnapshot(userId, id)
-      setJournalSnapshots(listJournalSnapshots(userId))
+      removeStoredSnapshot(companyId, id)
+      setJournalSnapshots(listJournalSnapshots(companyId))
     },
-    [userId],
+    [companyId],
   )
 
   const value = useMemo(

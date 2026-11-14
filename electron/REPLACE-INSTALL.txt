@@ -40,5 +40,5 @@ macOS: move Accounting AI.app to Trash. User data is under
   ~/Library/Application Support/Accounting AI/
 
 Deleting user data wipes local books — only do that if you intend a full reset.
-Books, settings, API keys, and journal saves live in that user-data folder
-(web-storage.json + Chromium storage), not inside the .app / portable exe.
+Books, settings, API keys, companies, and journal saves live in that user-data
+folder (web-storage.json + Chromium storage), not inside the .app / portable exe.

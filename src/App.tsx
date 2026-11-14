@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from './AppContext'
+import { CompanyProvider, useCompany } from './CompanyContext'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './firebase/AuthContext'
 import { AddTransaction } from './pages/AddTransaction'
@@ -15,9 +16,16 @@ import { TrialBalance } from './pages/TrialBalance'
 
 function AuthenticatedApp() {
   const { user, mode, firestore } = useAuth()
+  const { companyId } = useCompany()
 
   return (
-    <AppProvider key={user.uid} userId={user.uid} authMode={mode} firestore={firestore}>
+    <AppProvider
+      key={`${user.uid}:${companyId}`}
+      userId={user.uid}
+      companyId={companyId}
+      authMode={mode}
+      firestore={firestore}
+    >
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
@@ -83,7 +91,9 @@ function AuthenticatedApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <AuthenticatedApp />
+      <CompanyProvider>
+        <AuthenticatedApp />
+      </CompanyProvider>
     </AuthProvider>
   )
 }

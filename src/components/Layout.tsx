@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useApp } from '../AppContext'
+import { useCompany } from '../CompanyContext'
 import { NAV_VIEW_META } from '../settings'
 
 type Pill = { left: number; top: number; width: number; height: number; visible: boolean }
@@ -9,9 +10,12 @@ const HIDDEN_PILL: Pill = { left: 0, top: 0, width: 0, height: 0, visible: false
 
 export function Layout() {
   const { settings, updateSettings, booksReady, persistError } = useApp()
+  const { companies, companyId, switchCompany, activeCompany } = useCompany()
   const location = useLocation()
   const navRef = useRef<HTMLElement>(null)
   const [pill, setPill] = useState<Pill>(HIDDEN_PILL)
+  const brandLabel =
+    activeCompany?.name?.trim() || settings.companyName.trim() || 'Accounting AI'
 
   const links = [
     { to: '/add-transaction', label: 'Add a transaction', cta: true },
@@ -62,9 +66,27 @@ export function Layout() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <NavLink to="/" className="brand" end>
-          {settings.companyName.trim() || 'Accounting AI'}
-        </NavLink>
+        <div className="brand-cluster">
+          <NavLink to="/" className="brand" end>
+            {brandLabel}
+          </NavLink>
+          {companies.length > 1 && (
+            <label className="company-switch">
+              <span className="sr-only">Switch company</span>
+              <select
+                value={companyId}
+                aria-label="Switch company"
+                onChange={(e) => switchCompany(e.target.value)}
+              >
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
         <div className="topbar-actions">
           <button
             type="button"

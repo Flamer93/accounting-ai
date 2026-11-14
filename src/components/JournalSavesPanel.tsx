@@ -27,7 +27,8 @@ export function JournalSavesPanel() {
       setError(result.errors.join(' · '))
       return
     }
-    setMessage(`Saved “${result.snapshot!.name}” (${entries.length} entries).`)
+    const count = result.snapshot?.entries.length ?? entries.length
+    setMessage(`Saved “${result.snapshot!.name}” (${count} entries).`)
     setName('')
   }
 

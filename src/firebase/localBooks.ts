@@ -1,16 +1,13 @@
+import { companyBooksKey } from '../companies'
 import { DEFAULT_CHART_OF_ACCOUNTS, normalizeAccounts } from '../chartOfAccounts'
 import { DEFAULT_SETTINGS, normalizeSettings } from '../settings'
 import type { UserBooks } from './books'
 import { normalizeUserBooks } from './books'
 
-function booksKey(uid: string): string {
-  return `receipt-ledger:user:${uid}:books`
-}
-
-/** Per-user localStorage books (local single-user / offline) — never shared across uids. */
-export function loadLocalUserBooks(uid: string): UserBooks {
+/** Per-company localStorage books — never shared across companies. */
+export function loadLocalUserBooks(companyId: string): UserBooks {
   try {
-    const raw = localStorage.getItem(booksKey(uid))
+    const raw = localStorage.getItem(companyBooksKey(companyId))
     if (!raw) {
       return normalizeUserBooks({
         documents: [],
@@ -25,7 +22,7 @@ export function loadLocalUserBooks(uid: string): UserBooks {
   }
 }
 
-export function saveLocalUserBooks(uid: string, books: UserBooks): void {
+export function saveLocalUserBooks(companyId: string, books: UserBooks): void {
   const payload: UserBooks = {
     documents: books.documents,
     entries: books.entries,
@@ -33,9 +30,9 @@ export function saveLocalUserBooks(uid: string, books: UserBooks): void {
     settings: normalizeSettings(books.settings),
     updatedAt: new Date().toISOString(),
   }
-  localStorage.setItem(booksKey(uid), JSON.stringify(payload))
+  localStorage.setItem(companyBooksKey(companyId), JSON.stringify(payload))
 }
 
-export function clearLocalUserBooks(uid: string): void {
-  localStorage.removeItem(booksKey(uid))
+export function clearLocalUserBooks(companyId: string): void {
+  localStorage.removeItem(companyBooksKey(companyId))
 }

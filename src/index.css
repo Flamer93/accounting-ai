@@ -198,11 +198,40 @@ h3,
   border-color: color-mix(in srgb, var(--leaf) 45%, transparent);
 }
 
+.brand-cluster {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+  flex: 0 1 auto;
+}
+
 .brand {
   font-size: clamp(1.15rem, 2vw, 1.45rem);
   color: var(--leaf-deep);
   line-height: 1.1;
   white-space: nowrap;
+}
+
+.company-switch select {
+  max-width: 11rem;
+  border: 1px solid var(--line);
+  background: var(--field);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0.3rem 0.65rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.companies-rename-form,
+.companies-create-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin: 0.75rem 0;
 }
 
 .nav {
