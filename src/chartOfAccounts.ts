@@ -36,6 +36,33 @@ export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   expense: 'Expense',
 }
 
+/** Optgroup / section headers for account dropdowns. */
+export const ACCOUNT_TYPE_GROUP_LABELS: Record<AccountType, string> = {
+  asset: 'Assets',
+  liability: 'Liabilities',
+  equity: "Owner's Equity",
+  revenue: 'Revenue',
+  expense: 'Expenses',
+}
+
+export const ACCOUNT_TYPE_ORDER: AccountType[] = [
+  'asset',
+  'liability',
+  'equity',
+  'revenue',
+  'expense',
+]
+
+export function groupAccountsByType(
+  accounts: Account[],
+): { type: AccountType; label: string; accounts: Account[] }[] {
+  return ACCOUNT_TYPE_ORDER.map((type) => ({
+    type,
+    label: ACCOUNT_TYPE_GROUP_LABELS[type],
+    accounts: accountsSorted(accounts.filter((a) => a.type === type)),
+  })).filter((g) => g.accounts.length > 0)
+}
+
 export function getChartOfAccounts(): Account[] {
   return liveChart
 }

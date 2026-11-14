@@ -16,9 +16,8 @@ export function BalanceSheet() {
         <div>
           <h1>Balance Sheet</h1>
           <p>
-            Condensed statement from approved books. Optional post below creates a journal entry
-            (e.g. buy equipment on cash). Prefer the <Link to="/journal">Journal</Link> for complex
-            entries.
+            Assets, liabilities, and equity from approved books. Prefer the{' '}
+            <Link to="/journal">Journal</Link> for complex posts.
           </p>
         </div>
         <PeriodControls />
@@ -34,7 +33,7 @@ export function BalanceSheet() {
       </div>
 
       <div className="books-sheet bs-sheet">
-        <StatementHeader title="CONDENSED BALANCE SHEET" variant="apple" asOf />
+        <StatementHeader title="Condensed Balance Sheet" asOf />
 
         <div className="bs-band">ASSETS:</div>
         <table className="bs-apple">

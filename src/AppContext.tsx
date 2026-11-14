@@ -23,6 +23,12 @@ import { cascadeRemoveDocument } from './documentCascade'
 import type { AuthMode } from './firebase/types'
 import { loadUserBooks, saveUserBooks, type UserBooks } from './firebase/books'
 import { loadLocalUserBooks, saveLocalUserBooks } from './firebase/localBooks'
+import {
+  deleteJournalSnapshot as removeStoredSnapshot,
+  listJournalSnapshots,
+  saveJournalSnapshot,
+  type JournalSnapshot,
+} from './journalSnapshots'
 import { normalizeReceiptImage } from './normalizeReceiptImage'
 import {
   enabledExtractFields,
@@ -30,7 +36,17 @@ import {
   type AppSettings,
 } from './settings'
 import { uid } from './storage'
-import type { Account, AccountType, DocumentRecord, ExtractResult, JournalEntry, PeriodFilter } from './types'
+import type {
+  Account,
+  AccountType,
+  DocumentRecord,
+  ExtractResult,
+  JournalEntry,
+  PeriodFilter,
+  WorksheetExtractResult,
+  WorksheetEntryDraft,
+  WorksheetSuggestedAccount,
+} from './types'
 import {
   clearGoogleApiKey,
   clearOpenAiApiKey,
@@ -61,6 +77,20 @@ interface AppState {
   ) => { errors: string[]; blocked?: boolean; usageCount?: number }
   addDocument: (file: File, dataUrl: string) => DocumentRecord
   extractDocument: (documentId: string) => Promise<ExtractOutcome>
+  /**
+   * Scan a worksheet / narrative transaction-list image into draft journal rows.
+   * Does not post — caller reviews then calls `postWorksheetEntries`.
+   */
+  extractWorksheet: (input: {
+    dataUrl: string
+    filename: string
+    defaultYear?: string
+  }) => Promise<WorksheetExtractResult>
+  /** Ensure suggested accounts exist, then post selected worksheet drafts as approved entries. */
+  postWorksheetEntries: (input: {
+    entries: WorksheetEntryDraft[]
+    suggestedAccounts?: WorksheetSuggestedAccount[]
+  }) => { errors: string[]; postedIds: string[] }
   deleteDocument: (documentId: string) => void
   updateEntry: (entry: JournalEntry) => string[]
   /** Pass `override` when approving unsaved journal editor edits (avoids stale-state race). */
@@ -94,6 +124,14 @@ interface AppState {
   clearJournal: () => void
   /** Restore default chart of accounts (does not clear company name). */
   resetAccounts: () => void
+  /** Named journal snapshots keyed by as-of date (local). */
+  journalSnapshots: JournalSnapshot[]
+  saveJournalForDate: (input: { asOfDate: string; name?: string }) => {
+    errors: string[]
+    snapshot?: JournalSnapshot
+  }
+  restoreJournalSnapshot: (id: string) => { errors: string[] }
+  deleteJournalSnapshot: (id: string) => void
   openaiConfigured: boolean | null
   googleKeySaved: boolean
   openaiKeySaved: boolean
@@ -185,11 +223,13 @@ function applyBooks(books: UserBooks, setters: {
 type AppProviderProps = {
   children: ReactNode
   userId: string
+  /** Isolates books / settings / journal saves per company. */
+  companyId: string
   authMode: AuthMode
   firestore: Firestore | null
 }
 
-export function AppProvider({ children, userId, authMode, firestore }: AppProviderProps) {
+export function AppProvider({ children, userId, companyId, authMode, firestore }: AppProviderProps) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([])
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [accounts, setAccounts] = useState<Account[]>([])
@@ -200,6 +240,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
   const [openaiKeySaved, setOpenaiKeySaved] = useState(false)
   const [booksReady, setBooksReady] = useState(false)
   const [persistError, setPersistError] = useState<string | null>(null)
+  const [journalSnapshots, setJournalSnapshots] = useState<JournalSnapshot[]>([])
   const documentsRef = useRef(documents)
   const entriesRef = useRef(entries)
   const settingsRef = useRef(settings)
@@ -223,7 +264,11 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     setChartOfAccounts(accounts)
   }, [accounts])
 
-  // Boot this user's books — remount (key=uid) clears prior session state.
+  useEffect(() => {
+    setJournalSnapshots(listJournalSnapshots(companyId))
+  }, [companyId])
+
+  // Boot this company's books — remount (key=companyId) clears prior session state.
   useEffect(() => {
     let cancelled = false
     setBooksReady(false)
@@ -240,7 +285,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
         if (authMode === 'firebase' && firestore) {
           books = await loadUserBooks(firestore, userId)
         } else {
-          books = loadLocalUserBooks(userId)
+          books = loadLocalUserBooks(companyId)
         }
         if (cancelled) return
         applyBooks(books, {
@@ -260,7 +305,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
         if (cancelled) return
         console.error('Failed to load user books', err)
         setPersistError(err instanceof Error ? err.message : 'Failed to load books')
-        const fallback = loadLocalUserBooks(userId)
+        const fallback = loadLocalUserBooks(companyId)
         applyBooks(fallback, {
           setDocuments,
           setEntries,
@@ -291,12 +336,12 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       cancelled = true
       if (saveTimer.current) clearTimeout(saveTimer.current)
     }
-  }, [userId, authMode, firestore])
+  }, [userId, companyId, authMode, firestore])
 
   const persistBooks = useCallback(
     (next: UserBooks) => {
-      // Always keep a uid-scoped local mirror so account switches stay isolated offline.
-      saveLocalUserBooks(userId, next)
+      // Company-scoped local mirror — each company keeps its own books offline.
+      saveLocalUserBooks(companyId, next)
       if (authMode !== 'firebase' || !firestore) return
       if (saveTimer.current) clearTimeout(saveTimer.current)
       saveTimer.current = setTimeout(() => {
@@ -308,7 +353,7 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
           })
       }, 450)
     },
-    [authMode, firestore, userId],
+    [authMode, firestore, userId, companyId],
   )
 
   const snapshot = useCallback(
@@ -495,6 +540,160 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       return { entry, warning: result.warning }
     },
     [persistBooks, snapshot, userId],
+  )
+
+  const extractWorksheet = useCallback(
+    async (input: { dataUrl: string; filename: string; defaultYear?: string }) => {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      const googleKey = loadGoogleApiKey(userId)
+      const openaiKey = loadOpenAiApiKey(userId)
+      if (googleKey) headers['X-Google-Api-Key'] = googleKey
+      if (openaiKey) headers['X-OpenAI-Api-Key'] = openaiKey
+
+      const chart = accountsRef.current.map((a) => ({
+        code: a.code,
+        name: a.name,
+        type: a.type,
+      }))
+      const defaultYear =
+        input.defaultYear ||
+        period.to?.slice(0, 4) ||
+        period.from?.slice(0, 4) ||
+        String(new Date().getFullYear())
+
+      const res = await apiFetch(
+        '/api/extract-worksheet',
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            dataUrl: input.dataUrl,
+            filename: input.filename,
+            size: input.dataUrl.length,
+            accounts: chart,
+            defaultYear,
+            ...(googleKey ? { googleApiKey: googleKey } : {}),
+            ...(openaiKey ? { openaiApiKey: openaiKey } : {}),
+          }),
+        },
+        195_000,
+      )
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(
+          (err as { error?: string }).error || `Worksheet extract failed (HTTP ${res.status})`,
+        )
+      }
+      const result = (await res.json()) as WorksheetExtractResult
+      if ((googleKey || openaiKey) && result.source === 'mock') {
+        throw new Error(
+          'An AI key was sent but the server returned a mock worksheet extract. Check /api/extract-worksheet.',
+        )
+      }
+      return {
+        ...result,
+        entries: (result.entries || []).map((e) => ({
+          ...e,
+          id: e.id || uid('ws'),
+          include: e.include !== false,
+        })),
+        suggestedAccounts: result.suggestedAccounts || [],
+      }
+    },
+    [period.from, period.to, userId],
+  )
+
+  const postWorksheetEntries = useCallback(
+    (input: {
+      entries: WorksheetEntryDraft[]
+      suggestedAccounts?: WorksheetSuggestedAccount[]
+    }) => {
+      const errors: string[] = []
+      const postedIds: string[] = []
+      const chart = accountsRef.current
+
+      const resolveCode = (code: string, name: string | undefined, side: 'debit' | 'credit') => {
+        if (code && chart.some((a) => a.code === code)) return code
+        if (name) {
+          const byName = chart.find((a) => a.name.toLowerCase() === name.trim().toLowerCase())
+          if (byName) return byName.code
+          const fuzzy = chart.find((a) =>
+            a.name.toLowerCase().includes(name.trim().toLowerCase().slice(0, 8)),
+          )
+          if (fuzzy) return fuzzy.code
+        }
+        // Fallbacks within the existing chart only — never create accounts.
+        if (side === 'credit') {
+          return (
+            chart.find((a) => a.code === '1000')?.code ||
+            chart.find((a) => a.type === 'asset')?.code ||
+            chart[0]?.code ||
+            ''
+          )
+        }
+        return (
+          chart.find((a) => a.type === 'expense')?.code ||
+          chart.find((a) => a.code === '5200')?.code ||
+          chart[0]?.code ||
+          ''
+        )
+      }
+
+      void input.suggestedAccounts
+
+      const resolved = input.entries.map((draft) => {
+        if (draft.include === false) return draft
+        return {
+          ...draft,
+          debitAccount: resolveCode(draft.debitAccount, draft.debitAccountName, 'debit'),
+          creditAccount: resolveCode(draft.creditAccount, draft.creditAccountName, 'credit'),
+        }
+      })
+
+      const created: JournalEntry[] = []
+      for (const draft of resolved) {
+        if (draft.include === false) continue
+        const amount = Math.round((Number(draft.amount) + Number.EPSILON) * 100) / 100
+        const memo = [draft.memo, draft.reference].filter(Boolean).join(' — ')
+        const entry: JournalEntry = {
+          id: uid('je'),
+          date: draft.date,
+          memo: memo || 'Worksheet entry',
+          vendor: draft.vendor,
+          lines: [
+            { accountCode: draft.debitAccount, debit: amount, credit: 0 },
+            { accountCode: draft.creditAccount, debit: 0, credit: amount },
+          ],
+          status: 'approved',
+          editRequired: false,
+          source: 'extract',
+          createdAt: new Date().toISOString(),
+        }
+        const entryErrors = validateEntry(entry)
+        if (draft.debitAccount === draft.creditAccount) {
+          entryErrors.push('Debit and credit accounts must differ')
+        }
+        if (!(amount > 0)) entryErrors.push('Amount must be greater than zero')
+        if (entryErrors.length) {
+          errors.push(`${draft.memo || draft.date}: ${entryErrors.join(', ')}`)
+          continue
+        }
+        created.push(entry)
+        postedIds.push(entry.id)
+      }
+
+      if (created.length) {
+        entriesRef.current = [...created, ...entriesRef.current]
+        setEntries((prev) => [...created, ...prev])
+        persistBooks(snapshot({ entries: entriesRef.current }))
+      }
+
+      if (!postedIds.length && !errors.length) {
+        errors.push('No transactions selected to post.')
+      }
+      return { errors, postedIds }
+    },
+    [persistBooks, snapshot],
   )
 
   const updateEntry = useCallback((entry: JournalEntry) => {
@@ -733,6 +932,65 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
     persistBooks(snapshot({ accounts: defaults }))
   }, [persistBooks, snapshot])
 
+  const saveJournalForDate = useCallback(
+    (input: { asOfDate: string; name?: string }) => {
+      try {
+        if (!booksReady) {
+          return { errors: ['Books are still loading — try again in a moment.'] }
+        }
+        const snap = saveJournalSnapshot(companyId, {
+          asOfDate: input.asOfDate,
+          name: input.name,
+          entries: entriesRef.current,
+          accounts: accountsRef.current,
+        })
+        setJournalSnapshots(listJournalSnapshots(companyId))
+        void window.accountingDesktop?.storageFlush?.()
+        return { errors: [] as string[], snapshot: snap }
+      } catch (err) {
+        return {
+          errors: [err instanceof Error ? err.message : 'Could not save journal'],
+        }
+      }
+    },
+    [companyId, booksReady],
+  )
+
+  const restoreJournalSnapshot = useCallback(
+    (id: string) => {
+      const snap = listJournalSnapshots(companyId).find((s) => s.id === id)
+      if (!snap) return { errors: ['Saved journal not found'] }
+      let nextEntries: JournalEntry[]
+      let nextAccounts: Account[]
+      try {
+        nextEntries = structuredClone(snap.entries)
+        nextAccounts = structuredClone(snap.accounts)
+      } catch {
+        nextEntries = JSON.parse(JSON.stringify(snap.entries)) as JournalEntry[]
+        nextAccounts = JSON.parse(JSON.stringify(snap.accounts)) as Account[]
+      }
+      entriesRef.current = nextEntries
+      accountsRef.current = nextAccounts
+      setEntries(nextEntries)
+      setAccounts(nextAccounts)
+      setChartOfAccounts(nextAccounts)
+      persistBooks(snapshot({ entries: nextEntries, accounts: nextAccounts }))
+      if (snap.asOfDate) {
+        setPeriod((prev) => ({ ...prev, from: snap.asOfDate }))
+      }
+      return { errors: [] as string[] }
+    },
+    [persistBooks, snapshot, companyId],
+  )
+
+  const deleteJournalSnapshot = useCallback(
+    (id: string) => {
+      removeStoredSnapshot(companyId, id)
+      setJournalSnapshots(listJournalSnapshots(companyId))
+    },
+    [companyId],
+  )
+
   const value = useMemo(
     () => ({
       documents,
@@ -748,6 +1006,8 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteAccount,
       addDocument,
       extractDocument,
+      extractWorksheet,
+      postWorksheetEntries,
       deleteDocument,
       updateEntry,
       approveEntry,
@@ -757,6 +1017,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       postOpeningBalances,
       clearJournal,
       resetAccounts,
+      journalSnapshots,
+      saveJournalForDate,
+      restoreJournalSnapshot,
+      deleteJournalSnapshot,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,
@@ -779,6 +1043,8 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       deleteAccount,
       addDocument,
       extractDocument,
+      extractWorksheet,
+      postWorksheetEntries,
       deleteDocument,
       updateEntry,
       approveEntry,
@@ -788,6 +1054,10 @@ export function AppProvider({ children, userId, authMode, firestore }: AppProvid
       postOpeningBalances,
       clearJournal,
       resetAccounts,
+      journalSnapshots,
+      saveJournalForDate,
+      restoreJournalSnapshot,
+      deleteJournalSnapshot,
       openaiConfigured,
       googleKeySaved,
       openaiKeySaved,

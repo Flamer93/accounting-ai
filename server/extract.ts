@@ -604,3 +604,433 @@ export async function extractFromUpload(opts: {
 
   return mockExtract(opts.filename, opts.size, fields)
 }
+
+/** ---- Worksheet / narrative transaction-list extract ---- */
+
+export type WorksheetAccountType = 'asset' | 'liability' | 'equity' | 'revenue' | 'expense'
+
+export interface WorksheetSuggestedAccount {
+  name: string
+  type: WorksheetAccountType
+  /** Optional preferred code; client may assign one. */
+  code?: string
+}
+
+export interface WorksheetEntryDraft {
+  date: string
+  memo: string
+  amount: number
+  debitAccount: string
+  creditAccount: string
+  debitAccountName?: string
+  creditAccountName?: string
+  vendor?: string
+  reference?: string
+}
+
+export interface WorksheetExtractPayload {
+  entries: WorksheetEntryDraft[]
+  suggestedAccounts: WorksheetSuggestedAccount[]
+  source: ExtractSource
+  editRequired: boolean
+  rawText?: string
+  warning?: string
+  model?: string
+}
+
+function chartPrompt(accounts: Array<{ code: string; name: string; type: string }>): string {
+  if (!accounts.length) {
+    return '1000 Cash (asset), 1100 Accounts Receivable (asset), 1500 Equipment (asset), 2000 Accounts Payable (liability), 3000 Owner Equity (equity), 3100 Owner Drawings (equity), 4000 Service Revenue (revenue), 5000 Rent Expense, 5100 Utilities Expense, 5200 Office Supplies Expense, 5300 Meals, 5400 Travel / Automobile Expense, 5500 Software (expense)'
+  }
+  return accounts.map((a) => `${a.code} ${a.name} (${a.type})`).join('; ')
+}
+
+function worksheetInstructions(
+  filename: string,
+  accounts: Array<{ code: string; name: string; type: string }>,
+  defaultYear: string,
+): string {
+  return [
+    'You are a meticulous bookkeeping assistant reading a PHOTO of a worksheet / textbook page of narrative business transactions (journalize problems).',
+    `Image filename: ${filename}.`,
+    'FULL-IMAGE SCAN (mandatory): read the entire page top→bottom. Capture every dated transaction in the list (e.g. Dec. 1, 4, 8…).',
+    'Ignore struck-through instruction lines and decorative marks, but still read every transaction narrative.',
+    'Carry forward the month heading (e.g. Dec.) onto each day number. If a year is not printed, use ' +
+      defaultYear +
+      '.',
+    'Dates must be YYYY-MM-DD.',
+    'Split compound narratives that clearly contain two separate payments (two amounts / two cheques) into SEPARATE entries.',
+    'Map accounts to this chart when possible: ' + chartPrompt(accounts) + '.',
+    'CRITICAL: NEVER invent or open new accounts. debitAccount and creditAccount MUST be codes from the chart above only.',
+    'Map narrative titles to the closest existing chart account (e.g. automobile repairs → Travel Expense; telephone/hydro/water → Utilities Expense; owner withdraw → Owner Drawings; invoice purchases → Office Supplies + Accounts Payable).',
+    'If the worksheet says to open a new account, still map to the closest existing chart account and mention the original title only in memo.',
+    'Cash payments (Cheque …) credit Cash. Purchases on Invoice … credit Accounts Payable. Owner withdrawals debit Drawings. Revenue/sales debit Cash or AR and credit revenue.',
+    'amount must be a positive number (the transaction amount).',
+    'Reply with JSON only (no markdown) shaped as:',
+    '{"rawText":"…","suggestedAccounts":[],"entries":[{"date":"YYYY-MM-DD","memo":"short description","amount":0,"debitAccount":"code","creditAccount":"code","debitAccountName":"…","creditAccountName":"…","vendor":"optional","reference":"Cheque/Invoice # optional"}]}',
+    'Include EVERY transaction you can read. suggestedAccounts must always be an empty array.',
+  ].join(' ')
+}
+
+function normalizeWorksheetEntry(raw: unknown): WorksheetEntryDraft | null {
+  if (!raw || typeof raw !== 'object') return null
+  const rec = raw as Record<string, unknown>
+  const amount = Number(rec.amount)
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  const debitAccount = String(rec.debitAccount || '').trim()
+  const creditAccount = String(rec.creditAccount || '').trim()
+  if (!debitAccount || !creditAccount || debitAccount === creditAccount) return null
+  let date = String(rec.date || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    date = new Date().toISOString().slice(0, 10)
+  }
+  const memo = String(rec.memo || rec.description || 'Worksheet entry').trim() || 'Worksheet entry'
+  return {
+    date,
+    memo,
+    amount: Math.round((amount + Number.EPSILON) * 100) / 100,
+    debitAccount,
+    creditAccount,
+    debitAccountName: rec.debitAccountName ? String(rec.debitAccountName) : undefined,
+    creditAccountName: rec.creditAccountName ? String(rec.creditAccountName) : undefined,
+    vendor: rec.vendor ? String(rec.vendor) : undefined,
+    reference: rec.reference ? String(rec.reference) : undefined,
+  }
+}
+
+function normalizeSuggestedAccounts(raw: unknown): WorksheetSuggestedAccount[] {
+  if (!Array.isArray(raw)) return []
+  const out: WorksheetSuggestedAccount[] = []
+  for (const row of raw) {
+    if (!row || typeof row !== 'object') continue
+    const rec = row as Record<string, unknown>
+    const name = String(rec.name || '').trim()
+    const type = String(rec.type || '').trim() as WorksheetAccountType
+    if (!name) continue
+    if (!['asset', 'liability', 'equity', 'revenue', 'expense'].includes(type)) continue
+    const code = rec.code ? String(rec.code).trim() : undefined
+    out.push({ name, type, code })
+  }
+  return out
+}
+
+function toWorksheetPayload(
+  parsed: Record<string, unknown>,
+  source: ExtractSource,
+  editRequired: boolean,
+): WorksheetExtractPayload {
+  const entries = Array.isArray(parsed.entries)
+    ? parsed.entries.map(normalizeWorksheetEntry).filter((e): e is WorksheetEntryDraft => Boolean(e))
+    : []
+  if (!entries.length) {
+    throw new Error('No journalizable transactions found in the worksheet image')
+  }
+  const rawText = typeof parsed.rawText === 'string' ? parsed.rawText.trim().slice(0, 12000) : undefined
+  return {
+    entries,
+    // Never invent chart accounts from worksheets — map only to the live CoA.
+    suggestedAccounts: [],
+    source,
+    editRequired,
+    rawText,
+  }
+}
+
+export function mockWorksheetExtract(
+  filename: string,
+  size: number,
+  defaultYear: string,
+): WorksheetExtractPayload {
+  const y = /^\d{4}$/.test(defaultYear) ? defaultYear : '2026'
+  void hashString(`${filename}:${size}`)
+  return {
+    source: 'mock',
+    editRequired: true,
+    suggestedAccounts: [],
+    rawText: 'Mock worksheet extract (add a Google or OpenAI API key in Settings for live AI scan). Maps only to existing chart accounts.',
+    entries: [
+      {
+        date: `${y}-12-01`,
+        memo: 'Paid automobile repairs, Cheque 125',
+        amount: 50,
+        debitAccount: '5400',
+        creditAccount: '1000',
+        debitAccountName: 'Travel Expense',
+        creditAccountName: 'Cash',
+        reference: 'Cheque 125',
+      },
+      {
+        date: `${y}-12-01`,
+        memo: 'B. Fenato withdrew cash for personal use, Cheque 126',
+        amount: 150,
+        debitAccount: '3100',
+        creditAccount: '1000',
+        debitAccountName: 'Owner Drawings',
+        creditAccountName: 'Cash',
+        reference: 'Cheque 126',
+      },
+      {
+        date: `${y}-12-04`,
+        memo: 'Paid Bell Canada telephone bill, Cheque 128',
+        amount: 175,
+        debitAccount: '5100',
+        creditAccount: '1000',
+        debitAccountName: 'Utilities Expense',
+        creditAccountName: 'Cash',
+        vendor: 'Bell Canada',
+        reference: 'Cheque 128',
+      },
+      {
+        date: `${y}-12-08`,
+        memo: 'Purchased cleaning supplies from Acme Supply, Invoice 742',
+        amount: 120,
+        debitAccount: '5200',
+        creditAccount: '2000',
+        debitAccountName: 'Office Supplies Expense',
+        creditAccountName: 'Accounts Payable',
+        vendor: 'Acme Supply',
+        reference: 'Invoice 742',
+      },
+      {
+        date: `${y}-12-12`,
+        memo: 'Paid hydro bill, Cheque 132',
+        amount: 290,
+        debitAccount: '5100',
+        creditAccount: '1000',
+        debitAccountName: 'Utilities Expense',
+        creditAccountName: 'Cash',
+        reference: 'Cheque 132',
+      },
+      {
+        date: `${y}-12-12`,
+        memo: 'Paid water bill, Cheque 133',
+        amount: 175,
+        debitAccount: '5100',
+        creditAccount: '1000',
+        debitAccountName: 'Utilities Expense',
+        creditAccountName: 'Cash',
+        reference: 'Cheque 133',
+      },
+      {
+        date: `${y}-12-18`,
+        memo: 'Bank interest on loan charged to business account',
+        amount: 350,
+        debitAccount: '5500',
+        creditAccount: '1000',
+        debitAccountName: 'Software Expense',
+        creditAccountName: 'Cash',
+      },
+      {
+        date: `${y}-12-31`,
+        memo: 'Paid salaries for the rest of the month, Cheque 139',
+        amount: 1365,
+        debitAccount: '5000',
+        creditAccount: '1000',
+        debitAccountName: 'Rent Expense',
+        creditAccountName: 'Cash',
+        reference: 'Cheque 139',
+      },
+    ],
+  }
+}
+
+async function googleWorksheetExtract(
+  dataUrl: string,
+  filename: string,
+  apiKey: string,
+  accounts: Array<{ code: string; name: string; type: string }>,
+  defaultYear: string,
+): Promise<WorksheetExtractPayload> {
+  if (!apiKey.trim()) throw new Error('Google API key is empty')
+  const images = prepareVisionImages(dataUrl)
+  for (const image of images) {
+    if (!isVisionSupportedMime(image.mime) || image.mime === 'image/svg+xml') {
+      throw new Error(
+        `Google Gemini does not support ${image.mime || 'this file type'}. Upload a JPEG or PNG photo.`,
+      )
+    }
+  }
+  const prompt = worksheetInstructions(filename, accounts, defaultYear)
+  const deadlineMs = Date.now() + GEMINI_TOTAL_BUDGET_MS
+  let lastError = 'Google Gemini worksheet extract failed'
+  for (const model of GEMINI_MODEL_FALLBACKS) {
+    if (Date.now() >= deadlineMs) {
+      throw new Error(`Google Gemini timed out after ${GEMINI_TOTAL_BUDGET_MS / 1000}s total budget`)
+    }
+    try {
+      const response = await callGeminiModel(model, apiKey, images, prompt, deadlineMs)
+      if (!response.ok) {
+        const text = sanitizeProviderError(await response.text())
+        lastError = `Google Gemini error ${response.status} (${model}): ${text}`
+        if (response.status === 404) continue
+        throw new Error(lastError)
+      }
+      const json = (await response.json()) as {
+        candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>
+        error?: { message?: string }
+      }
+      if (json.error?.message) {
+        lastError = `Google Gemini error (${model}): ${sanitizeProviderError(json.error.message)}`
+        if (/not found|not supported/i.test(json.error.message)) continue
+        throw new Error(lastError)
+      }
+      const content = json.candidates?.[0]?.content?.parts?.map((p) => p.text || '').join('') || ''
+      if (!content) {
+        lastError = `Empty Google Gemini response (${model})`
+        continue
+      }
+      const payload = toWorksheetPayload(parseExtractJson(content) as Record<string, unknown>, 'google', false)
+      return { ...payload, model }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google Gemini request failed'
+      lastError = message
+      if (/error 404|\(404\)|not found/i.test(message) && !/timed out/i.test(message)) continue
+      throw err instanceof Error ? err : new Error(message)
+    }
+  }
+  throw new Error(lastError)
+}
+
+async function openaiWorksheetExtract(
+  dataUrl: string,
+  filename: string,
+  apiKey: string,
+  accounts: Array<{ code: string; name: string; type: string }>,
+  defaultYear: string,
+): Promise<WorksheetExtractPayload> {
+  if (!apiKey.trim()) throw new Error('OpenAI API key is empty')
+  const images = prepareVisionImages(dataUrl)
+  for (const image of images) {
+    if (!isVisionSupportedMime(image.mime)) {
+      throw new Error(
+        `OpenAI vision does not support ${image.mime || 'this file type'}. Upload a JPEG or PNG photo.`,
+      )
+    }
+  }
+  const userContent: Array<Record<string, unknown>> = [
+    { type: 'text', text: 'Scan this worksheet / transaction-list image completely and return the JSON.' },
+  ]
+  for (const image of images) {
+    userContent.push({ type: 'text', text: 'Worksheet image:' })
+    userContent.push({
+      type: 'image_url',
+      image_url: { url: `data:${image.mime};base64,${image.base64}` },
+    })
+  }
+  const body = JSON.stringify({
+    model: 'gpt-4o',
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: worksheetInstructions(filename, accounts, defaultYear),
+      },
+      { role: 'user', content: userContent },
+    ],
+  })
+
+  let lastError = 'OpenAI worksheet extract failed'
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), OPENAI_ATTEMPT_TIMEOUT_MS)
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body,
+        signal: controller.signal,
+      })
+      if (OPENAI_RETRYABLE.has(response.status)) {
+        const text = sanitizeProviderError(await response.text())
+        lastError = `OpenAI error ${response.status}: ${text}`
+        await sleep(500 * 3 ** attempt)
+        continue
+      }
+      if (!response.ok) {
+        const text = sanitizeProviderError(await response.text())
+        throw new Error(`OpenAI error ${response.status}: ${text}`)
+      }
+      const json = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>
+      }
+      const content = json.choices?.[0]?.message?.content
+      if (!content) throw new Error('Empty OpenAI response')
+      return {
+        ...toWorksheetPayload(parseExtractJson(content) as Record<string, unknown>, 'openai', false),
+        model: 'gpt-4o',
+      }
+    } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        throw new Error(
+          `OpenAI timed out after ${OPENAI_ATTEMPT_TIMEOUT_MS / 1000}s. Try a clearer JPEG/PNG or retry.`,
+        )
+      }
+      if (err instanceof Error && err.message.startsWith('OpenAI error')) throw err
+      lastError = err instanceof Error ? sanitizeProviderError(err.message) : 'OpenAI network error'
+      await sleep(500 * 3 ** attempt)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+  throw new Error(lastError)
+}
+
+export async function extractWorksheetFromUpload(opts: {
+  filename: string
+  size: number
+  dataUrl: string
+  accounts?: Array<{ code: string; name: string; type: string }>
+  defaultYear?: string
+  googleApiKey?: string
+  openaiApiKey?: string
+}): Promise<WorksheetExtractPayload> {
+  const accounts = Array.isArray(opts.accounts) ? opts.accounts : []
+  const defaultYear = String(opts.defaultYear || new Date().getFullYear())
+  const googleKey = opts.googleApiKey?.trim() || ''
+  const openaiKey = opts.openaiApiKey?.trim() || process.env.OPENAI_API_KEY?.trim() || ''
+  const openaiFromRequest = Boolean(opts.openaiApiKey?.trim())
+
+  if (googleKey) {
+    try {
+      return await googleWorksheetExtract(opts.dataUrl, opts.filename, googleKey, accounts, defaultYear)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Google extract failed'
+      console.error('Google worksheet extract failed:', message)
+      if (openaiKey) {
+        try {
+          const openai = await openaiWorksheetExtract(
+            opts.dataUrl,
+            opts.filename,
+            openaiKey,
+            accounts,
+            defaultYear,
+          )
+          return { ...openai, warning: `Google failed: ${message}. Using OpenAI.` }
+        } catch (openaiErr) {
+          const openaiMessage =
+            openaiErr instanceof Error ? openaiErr.message : 'OpenAI extract failed'
+          console.error('OpenAI worksheet fallback failed:', openaiMessage)
+          throw new Error(`Google failed: ${message}`)
+        }
+      }
+      throw new Error(`Google failed: ${message}`)
+    }
+  }
+
+  if (openaiKey) {
+    try {
+      return await openaiWorksheetExtract(opts.dataUrl, opts.filename, openaiKey, accounts, defaultYear)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'OpenAI extract failed'
+      console.error('OpenAI worksheet extract failed:', message)
+      throw new Error(
+        openaiFromRequest || process.env.OPENAI_API_KEY ? `OpenAI failed: ${message}` : message,
+      )
+    }
+  }
+
+  return mockWorksheetExtract(opts.filename, opts.size || opts.dataUrl.length, defaultYear)
+}

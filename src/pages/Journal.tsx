@@ -1,22 +1,76 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { accountLabel } from '../chartOfAccounts'
 import { approvedEntries, inPeriod, journalRefMap, validateEntry } from '../accounting'
+import { AccountSelect } from '../components/AccountSelect'
 import { ClearBooksPanel } from '../components/ClearBooksPanel'
-import { OpeningBalancesPanel } from '../components/OpeningBalancesPanel'
 import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
 import { useApp } from '../AppContext'
+import { useCompany } from '../CompanyContext'
+import { companyHighlightKey } from '../companies'
 import { formatAmount, formatShortDate } from '../moneyFormat'
 import type { JournalEntry } from '../types'
 
+function loadHighlight(companyId: string): string {
+  try {
+    const raw = localStorage.getItem(companyHighlightKey(companyId))
+    if (!raw) return ''
+    // Prefer a single code; tolerate prior JSON-array multi-select saves.
+    if (raw.startsWith('[')) {
+      const parsed = JSON.parse(raw) as unknown
+      if (!Array.isArray(parsed)) return ''
+      const first = parsed.find((c): c is string => typeof c === 'string' && Boolean(c))
+      return first || ''
+    }
+    return raw.trim()
+  } catch {
+    return ''
+  }
+}
+
+function saveHighlight(companyId: string, code: string) {
+  try {
+    const key = companyHighlightKey(companyId)
+    if (!code) localStorage.removeItem(key)
+    else localStorage.setItem(key, code)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function Journal() {
-  const { entries, period, updateEntry, approveEntry, deleteEntry, addManualEntry } = useApp()
+  const { companyId } = useCompany()
+  const {
+    entries,
+    accounts,
+    period,
+    updateEntry,
+    approveEntry,
+    deleteEntry,
+    addManualEntry,
+    saveJournalForDate,
+  } = useApp()
   const [drafts, setDrafts] = useState<Record<string, JournalEntry>>({})
   const [errors, setErrors] = useState<Record<string, string[]>>({})
   const [showComposer, setShowComposer] = useState(true)
-  const [showOpening, setShowOpening] = useState(false)
   const [showClear, setShowClear] = useState(false)
+  const [saveNote, setSaveNote] = useState<string | null>(null)
+  const [highlightAccount, setHighlightAccount] = useState(() => loadHighlight(companyId))
+
+  useEffect(() => {
+    setHighlightAccount(loadHighlight(companyId))
+  }, [companyId])
+
+  function onSaveForDate() {
+    const asOfDate = period.from || new Date().toISOString().slice(0, 10)
+    const result = saveJournalForDate({ asOfDate })
+    if (result.errors.length) {
+      setSaveNote(result.errors.join(' · '))
+      return
+    }
+    setSaveNote(`Saved journal for ${asOfDate}. Restore anytime in Settings → Saved journals.`)
+  }
 
   const refs = useMemo(() => journalRefMap(entries, period), [entries, period])
   const visible = entries
@@ -69,26 +123,32 @@ export function Journal() {
     <div>
       <div className="page-head">
         <div>
-          <h1>General Journal</h1>
-          <p>
-            Primary entry point. Post here and Ledger, T-Accounts, Trial Balance, Income Statement,
-            and Balance Sheet all update from the same approved entries.
-          </p>
+          <h1 className="page-title">Journal</h1>
+          <p>Post entries here. All statements update from the same approved books.</p>
         </div>
         <div className="cta-row">
           <PeriodControls />
+          <label className="field journal-highlight-field">
+            <span>Highlight account</span>
+            <AccountSelect
+              accounts={accounts}
+              value={highlightAccount}
+              onChange={(e) => {
+                const next = e.target.value
+                setHighlightAccount(next)
+                saveHighlight(companyId, next)
+              }}
+              placeholder="All accounts"
+            />
+          </label>
           <button className="btn secondary" type="button" onClick={() => setShowComposer((v) => !v)}>
             {showComposer ? 'Hide composer' : 'New entry'}
           </button>
-          <button
-            className="btn secondary"
-            type="button"
-            onClick={() => setShowOpening((v) => !v)}
-          >
-            {showOpening ? 'Hide openings' : 'Opening balances'}
-          </button>
           <button className="btn secondary" type="button" onClick={() => addManualEntry()}>
             Blank draft
+          </button>
+          <button className="btn secondary" type="button" onClick={onSaveForDate}>
+            Save for date
           </button>
           <button className="btn danger" type="button" onClick={() => setShowClear((v) => !v)}>
             {showClear ? 'Hide clear' : 'Clear journal'}
@@ -96,11 +156,10 @@ export function Journal() {
         </div>
       </div>
 
-      {showOpening && (
-        <div className="panel" style={{ marginBottom: '1rem' }}>
-          <h2 className="settings-subhead">Start month / opening balances</h2>
-          <OpeningBalancesPanel />
-        </div>
+      {saveNote && (
+        <p className="muted" style={{ marginTop: 0 }}>
+          {saveNote}
+        </p>
       )}
 
       {showClear && (
@@ -117,43 +176,50 @@ export function Journal() {
       )}
 
       <div className="books-sheet journal-sheet">
-        <StatementHeader title="General Journal" variant="plain" />
-        <table className="journal-classic">
-          <thead>
-            <tr>
-              <th className="col-date">Date</th>
-              <th className="col-desc">Description</th>
-              <th className="col-pr">PR</th>
-              <th className="col-amt">Amount (Dr. $)</th>
-              <th className="col-amt">Amount (Cr. $)</th>
-            </tr>
-          </thead>
-          <tbody>
-            {posted.map((entry) => {
-              const debitLines = entry.lines.filter((l) => (l.debit || 0) > 0)
-              const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
-              const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
-              return (
-                <FragmentRows
-                  key={entry.id}
-                  entry={entry}
-                  debitLines={debitLines}
-                  creditLines={creditLines}
-                  rowSpan={rowSpan}
-                  pr={refs.get(entry.id) || ''}
-                />
-              )
-            })}
-            {!posted.length && (
+        <StatementHeader title="General Journal" />
+        <div className="table-wrap">
+          <table className="journal-classic">
+            <thead>
               <tr>
-                <td colSpan={5} className="muted">
-                  No entries yet. Post above — formats stay blank until you enter real dates and
-                  amounts.
-                </td>
+                <th className="col-date">Date</th>
+                <th className="col-desc">Description</th>
+                <th className="col-pr">PR</th>
+                <th className="col-amt">Amount (Dr. $)</th>
+                <th className="col-amt">Amount (Cr. $)</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {posted.map((entry) => {
+                const debitLines = entry.lines.filter((l) => (l.debit || 0) > 0)
+                const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
+                const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
+                const hit =
+                  Boolean(highlightAccount) &&
+                  entry.lines.some((l) => l.accountCode === highlightAccount)
+                return (
+                  <FragmentRows
+                    key={entry.id}
+                    entry={entry}
+                    debitLines={debitLines}
+                    creditLines={creditLines}
+                    rowSpan={rowSpan}
+                    pr={refs.get(entry.id) || ''}
+                    highlight={hit}
+                    highlightAccount={highlightAccount}
+                  />
+                )
+              })}
+              {!posted.length && (
+                <tr>
+                  <td colSpan={5} className="muted">
+                    No entries yet. Post above — formats stay blank until you enter real dates and
+                    amounts.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {visible.some((e) => e.status !== 'approved') && (
@@ -249,12 +315,16 @@ function FragmentRows({
   debitLines,
   creditLines,
   pr,
+  highlight,
+  highlightAccount,
 }: {
   entry: JournalEntry
   debitLines: JournalEntry['lines']
   creditLines: JournalEntry['lines']
   rowSpan: number
   pr: string
+  highlight: boolean
+  highlightAccount: string
 }) {
   const rows: Array<{ kind: 'debit' | 'credit' | 'narr'; line?: JournalEntry['lines'][0] }> = [
     ...debitLines.map((line) => ({ kind: 'debit' as const, line })),
@@ -264,23 +334,34 @@ function FragmentRows({
 
   return (
     <>
-      {rows.map((row, idx) => (
-        <tr key={`${entry.id}_${idx}`} className={row.kind === 'narr' ? 'journal-narr' : undefined}>
-          <td className="col-date">{idx === 0 ? formatShortDate(entry.date) : ''}</td>
-          <td className={`col-desc ${row.kind === 'credit' ? 'credit-indent' : ''}`}>
-            {row.kind === 'narr'
-              ? `(${entry.memo || entry.vendor || 'Entry'})`
-              : accountLabel(row.line!.accountCode)}
-          </td>
-          <td className="col-pr">{idx === 0 ? pr : ''}</td>
-          <td className="col-amt num">
-            {row.kind === 'debit' && row.line ? formatAmount(row.line.debit || 0) : ''}
-          </td>
-          <td className="col-amt num">
-            {row.kind === 'credit' && row.line ? formatAmount(row.line.credit || 0) : ''}
-          </td>
-        </tr>
-      ))}
+      {rows.map((row, idx) => {
+        const lineHit =
+          Boolean(highlightAccount) && row.line?.accountCode === highlightAccount
+        const classes = [
+          row.kind === 'narr' ? 'journal-narr' : '',
+          highlight ? 'journal-entry-hit' : '',
+          lineHit ? 'journal-line-hit' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')
+        return (
+          <tr key={`${entry.id}_${idx}`} className={classes || undefined}>
+            <td className="col-date">{idx === 0 ? formatShortDate(entry.date) : ''}</td>
+            <td className={`col-desc ${row.kind === 'credit' ? 'credit-indent' : ''}`}>
+              {row.kind === 'narr'
+                ? `(${entry.memo || entry.vendor || 'Entry'})`
+                : accountLabel(row.line!.accountCode)}
+            </td>
+            <td className="col-pr">{idx === 0 ? pr : ''}</td>
+            <td className="col-amt num">
+              {row.kind === 'debit' && row.line ? formatAmount(row.line.debit || 0) : ''}
+            </td>
+            <td className="col-amt num">
+              {row.kind === 'credit' && row.line ? formatAmount(row.line.credit || 0) : ''}
+            </td>
+          </tr>
+        )
+      })}
     </>
   )
 }

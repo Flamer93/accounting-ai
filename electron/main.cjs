@@ -1,14 +1,19 @@
 'use strict'
 
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, dialog, session } = require('electron')
 const { spawn } = require('node:child_process')
+const fs = require('node:fs')
 const http = require('node:http')
 const net = require('node:net')
 const path = require('node:path')
 const { loadDesktopEnv } = require('./load-env.cjs')
+const { registerDesktopStorage, flushDesktopStorage } = require('./desktop-storage.cjs')
 
 const isDev = !app.isPackaged
 const projectRoot = path.resolve(__dirname, '..')
+/** Stable packaged port so Chromium origin/localStorage stays consistent when possible. */
+const PREFERRED_PORT = 47823
+let storageFlushed = false
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let serverProcess = null
@@ -20,19 +25,27 @@ let serverPort = null
 /** @type {string | null} */
 let startUrl = null
 
-function findFreePort() {
+function tryListen(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port, '127.0.0.1', () => {
       const address = server.address()
-      const port = typeof address === 'object' && address ? address.port : 0
+      const bound = typeof address === 'object' && address ? address.port : port
       server.close((err) => {
         if (err) reject(err)
-        else resolve(port)
+        else resolve(bound)
       })
     })
     server.on('error', reject)
   })
+}
+
+async function findServerPort() {
+  try {
+    return await tryListen(PREFERRED_PORT)
+  } catch {
+    return tryListen(0)
+  }
 }
 
 function waitForHealth(port, timeoutMs = 60_000) {
@@ -64,9 +77,21 @@ function waitForHealth(port, timeoutMs = 60_000) {
   })
 }
 
+function appendDesktopLog(line) {
+  try {
+    const logPath = path.join(app.getPath('userData'), 'desktop.log')
+    fs.appendFileSync(logPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8')
+  } catch {
+    /* ignore logging failures */
+  }
+}
+
 function startPackagedServer(port) {
   const serverPath = path.join(process.resourcesPath, 'server.cjs')
   const staticRoot = path.join(process.resourcesPath, 'app-dist')
+  if (!fs.existsSync(serverPath)) {
+    throw new Error(`Missing packaged server at ${serverPath}`)
+  }
   serverProcess = spawn(process.execPath, [serverPath], {
     env: {
       ...process.env,
@@ -81,35 +106,55 @@ function startPackagedServer(port) {
     stdio: ['ignore', 'pipe', 'pipe'],
   })
   serverProcess.stdout?.on('data', (chunk) => {
-    process.stdout.write(`[server] ${chunk}`)
+    const text = String(chunk)
+    process.stdout.write(`[server] ${text}`)
+    appendDesktopLog(`[server] ${text.trimEnd()}`)
   })
   serverProcess.stderr?.on('data', (chunk) => {
-    process.stderr.write(`[server] ${chunk}`)
+    const text = String(chunk)
+    process.stderr.write(`[server] ${text}`)
+    appendDesktopLog(`[server:err] ${text.trimEnd()}`)
   })
   serverProcess.on('exit', (code, signal) => {
     serverProcess = null
     serverPort = null
     if (!quitting) {
-      console.error(`Extract server exited (code=${code}, signal=${signal})`)
+      const msg = `Extract server exited (code=${code}, signal=${signal})`
+      console.error(msg)
+      appendDesktopLog(msg)
     }
   })
 }
 
 function createWindow(url) {
+  // macOS Electron builds feel snappier without Chromium paint invalidation on every resize.
+  const isMac = process.platform === 'darwin'
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
-    minWidth: 960,
-    minHeight: 640,
+    minWidth: 720,
+    minHeight: 520,
     title: 'Accounting AI',
     show: false,
+    autoHideMenuBar: true,
+    fullscreenable: true,
+    backgroundColor: '#0f1613',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      spellcheck: false,
+      backgroundThrottling: true,
+      enableBlinkFeatures: '',
     },
   })
+
+  if (!isMac) {
+    mainWindow.on('resize', () => {
+      mainWindow?.webContents.invalidate?.()
+    })
+  }
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show()
@@ -146,11 +191,12 @@ async function ensureServer() {
     return startUrl
   }
 
-  const port = await findFreePort()
+  const port = await findServerPort()
   startPackagedServer(port)
   await waitForHealth(port)
   serverPort = port
   startUrl = `http://127.0.0.1:${port}`
+  appendDesktopLog(`extract server ready on ${startUrl}`)
   return startUrl
 }
 
@@ -195,18 +241,71 @@ if (process.platform === 'linux') {
   app.disableHardwareAcceleration()
 }
 
+async function failStartup(err) {
+  const message = err instanceof Error ? err.stack || err.message : String(err)
+  console.error(message)
+  appendDesktopLog(`startup failed: ${message}`)
+  const logHint = (() => {
+    try {
+      return `\n\nLog file:\n${path.join(app.getPath('userData'), 'desktop.log')}`
+    } catch {
+      return ''
+    }
+  })()
+  try {
+    await dialog.showMessageBox({
+      type: 'error',
+      title: 'Accounting AI failed to start',
+      message: 'The desktop app could not start.',
+      detail: `${message}${logHint}`,
+      buttons: ['OK'],
+    })
+  } catch {
+    /* ignore dialog failures */
+  }
+  app.quit()
+}
+
+async function flushPersistentState() {
+  if (storageFlushed) return
+  storageFlushed = true
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop-storage:request-flush')
+      // Give the renderer a beat to dump localStorage → userData.
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    flushDesktopStorage()
+  } catch {
+    /* ignore */
+  }
+  try {
+    await session.defaultSession.flushStorageData()
+  } catch {
+    /* ignore */
+  }
+  appendDesktopLog('flushed desktop storage + session')
+}
+
 app.whenReady().then(() => {
+  registerDesktopStorage(app.getPath('userData'))
+  appendDesktopLog(
+    `starting packaged=${app.isPackaged} platform=${process.platform} userData=${app.getPath('userData')}`,
+  )
   bootstrap().catch((err) => {
-    console.error(err)
-    app.quit()
+    void failStartup(err)
   })
 
   app.on('activate', () => {
     // macOS: re-open a window when clicking the dock icon
     if (BrowserWindow.getAllWindows().length === 0) {
+      storageFlushed = false
       bootstrap().catch((err) => {
-        console.error(err)
-        app.quit()
+        void failStartup(err)
       })
     }
   })
@@ -219,7 +318,18 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (!storageFlushed) {
+    event.preventDefault()
+    quitting = true
+    void flushPersistentState()
+      .catch(() => undefined)
+      .finally(() => {
+        stopServer()
+        app.quit()
+      })
+    return
+  }
   quitting = true
   stopServer()
 })

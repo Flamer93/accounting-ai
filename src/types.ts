@@ -62,6 +62,38 @@ export interface ExtractResult {
   lineItems?: Array<{ description: string; amount?: number }>
 }
 
+/** One drafted journal line from a worksheet / narrative transaction-list scan. */
+export interface WorksheetEntryDraft {
+  date: string
+  memo: string
+  amount: number
+  debitAccount: string
+  creditAccount: string
+  debitAccountName?: string
+  creditAccountName?: string
+  vendor?: string
+  reference?: string
+  /** Client-only: include in bulk post. */
+  include?: boolean
+  id?: string
+}
+
+export interface WorksheetSuggestedAccount {
+  name: string
+  type: AccountType
+  code?: string
+}
+
+export interface WorksheetExtractResult {
+  entries: WorksheetEntryDraft[]
+  suggestedAccounts: WorksheetSuggestedAccount[]
+  source: 'google' | 'openai' | 'mock'
+  editRequired: boolean
+  rawText?: string
+  warning?: string
+  model?: string
+}
+
 export interface PeriodFilter {
   from?: string
   to?: string

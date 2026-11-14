@@ -1,8 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
-import { accountTypeLabel, formatMoney } from '../accounting'
+import { formatMoney } from '../accounting'
 import {
-  ACCOUNT_TYPE_LABELS,
+  ACCOUNT_TYPE_GROUP_LABELS,
   OPENING_BALANCE_EQUITY_NAME,
   accountsSorted,
   ensureOpeningBalanceEquity,
@@ -11,12 +11,8 @@ import type { Account, AccountType } from '../types'
 
 const TYPE_ORDER: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
-/**
- * Set starting balances (e.g. Cash $1500) as one balanced opening journal entry.
- * Plug difference to Opening Balance Equity so TB / BS stay in balance.
- */
 export function OpeningBalancesPanel({ compact = false }: { compact?: boolean }) {
-  const { accounts, period, postOpeningBalances, entries } = useApp()
+  const { accounts, period, postOpeningBalances } = useApp()
   const [date, setDate] = useState(period.from || new Date().toISOString().slice(0, 10))
   const [memo, setMemo] = useState('Opening balances')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
@@ -63,13 +59,6 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
       }))
       .filter((r) => r.amount > 0)
 
-    if (clearFirst && entries.length) {
-      const okClear = window.confirm(
-        `Clear ${entries.length} existing journal entr${entries.length === 1 ? 'y' : 'ies'} before posting opening balances?\n\nThis cannot be undone.`,
-      )
-      if (!okClear) return
-    }
-
     const result = postOpeningBalances({
       date,
       memo,
@@ -82,38 +71,26 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
       return
     }
 
-    const summary = rows
-      .slice(0, 3)
-      .map((r) => {
-        const acct = editableAccounts.find((a) => a.code === r.accountCode)
-        return `${acct?.name || r.accountCode} ${formatMoney(r.amount)}`
-      })
-      .join(', ')
-    const more = rows.length > 3 ? ` (+${rows.length - 3} more)` : ''
-    setOk(
-      `Posted opening balances${summary ? `: ${summary}${more}` : ''}. Ledger, T-Accounts, Trial Balance, and Balance Sheet now start from these amounts.`,
-    )
+    setOk(`Posted openings${rows.length ? ` (${rows.length} accounts)` : ''}.`)
     setAmounts({})
   }
 
   return (
-    <form className={`opening-balances ${compact ? 'compact' : ''}`} onSubmit={onSubmit}>
+    <form className={`opening-balances condensed ${compact ? 'compact' : ''}`} onSubmit={onSubmit}>
       {!compact && (
-        <p className="muted" style={{ marginTop: 0 }}>
-          Enter starting amounts on each account&apos;s normal side (assets &amp; expenses debit;
-          liabilities, equity &amp; revenue credit). Difference posts to{' '}
-          <strong>{OPENING_BALANCE_EQUITY_NAME}</strong> so the books stay balanced — e.g. Cash{' '}
-          {formatMoney(1500)} debits Cash and credits Opening Balance Equity.
+        <p className="muted settings-lead">
+          Starting amounts on the normal side; difference plugs to {OPENING_BALANCE_EQUITY_NAME}{' '}
+          (e.g. Cash {formatMoney(1500)}).
         </p>
       )}
 
-      <div className="post-entry-grid">
+      <div className="opening-meta-row">
         <label className="field">
-          <span>As-of date</span>
+          <span>As-of</span>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
         </label>
-        <label className="field" style={{ gridColumn: 'span 2' }}>
-          <span>Description</span>
+        <label className="field opening-memo-field">
+          <span>Memo</span>
           <input
             value={memo}
             onChange={(e) => setMemo(e.target.value)}
@@ -129,7 +106,7 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
             checked={setPeriodFrom}
             onChange={(e) => setSetPeriodFrom(e.target.checked)}
           />
-          <span>Set period From to this date (statements start here)</span>
+          <span>Set period From to this date</span>
         </label>
         <label className="check-row">
           <input
@@ -137,42 +114,68 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
             checked={clearFirst}
             onChange={(e) => setClearFirst(e.target.checked)}
           />
-          <span>Clear journal first (start new month / period clean)</span>
+          <span>Clear journal first</span>
         </label>
       </div>
 
-      <div className="opening-balances-grid">
-        {grouped().map((group) => (
-          <div key={group.type} className="opening-balances-group">
-            <h3 className="opening-balances-type">{ACCOUNT_TYPE_LABELS[group.type]}</h3>
-            {group.accounts.map((account) => (
-              <label key={account.code} className="field opening-amount-row">
-                <span>
-                  {account.name}
-                  <span className="muted"> · {accountTypeLabel(account.type)}</span>
-                </span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={amounts[account.code] ?? ''}
-                  onChange={(e) => setAmount(account.code, e.target.value)}
-                />
-              </label>
+      <div className="opening-balances-columns">
+        <div className="opening-balances-grid condensed">
+          {grouped()
+            .filter((g) => g.type === 'asset' || g.type === 'expense')
+            .map((group) => (
+              <div key={group.type} className="opening-balances-group">
+                <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
+                {group.accounts.map((account) => (
+                  <label key={account.code} className="opening-amount-row">
+                    <span>{account.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={amounts[account.code] ?? ''}
+                      onChange={(e) => setAmount(account.code, e.target.value)}
+                      aria-label={`${account.name} opening amount`}
+                    />
+                  </label>
+                ))}
+              </div>
             ))}
-          </div>
-        ))}
+        </div>
+        <div className="opening-balances-grid condensed">
+          {grouped()
+            .filter((g) => g.type === 'liability' || g.type === 'equity' || g.type === 'revenue')
+            .map((group) => (
+              <div key={group.type} className="opening-balances-group">
+                <h3 className="opening-balances-type">{ACCOUNT_TYPE_GROUP_LABELS[group.type]}</h3>
+                {group.accounts.map((account) => (
+                  <label key={account.code} className="opening-amount-row">
+                    <span>{account.name}</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="0"
+                      value={amounts[account.code] ?? ''}
+                      onChange={(e) => setAmount(account.code, e.target.value)}
+                      aria-label={`${account.name} opening amount`}
+                    />
+                  </label>
+                ))}
+              </div>
+            ))}
+        </div>
       </div>
 
       {!editableAccounts.length && (
-        <p className="muted">Add accounts in Chart of accounts before setting openings.</p>
+        <p className="muted">Add accounts before setting openings.</p>
       )}
 
       <div className="cta-row">
         <button className="btn" type="submit" disabled={!editableAccounts.length}>
-          Post opening balances
+          Post openings
         </button>
         {ok && <span className="badge ok">{ok}</span>}
         {error && <span className="error">{error}</span>}

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useApp } from '../AppContext'
+import { AccountSelect } from './AccountSelect'
 import type { Account } from '../types'
 
 interface Props {
@@ -93,23 +94,21 @@ export function PostEntryForm({
         </label>
         <label className="field">
           <span>Debit account</span>
-          <select value={debitAccount} onChange={(e) => setDebitAccount(e.target.value)} required>
-            {accounts.map((a) => (
-              <option key={a.code} value={a.code}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <AccountSelect
+            accounts={accounts}
+            value={debitAccount}
+            onChange={(e) => setDebitAccount(e.target.value)}
+            required
+          />
         </label>
         <label className="field">
           <span>Credit account</span>
-          <select value={creditAccount} onChange={(e) => setCreditAccount(e.target.value)} required>
-            {accounts.map((a) => (
-              <option key={a.code} value={a.code}>
-                {a.name}
-              </option>
-            ))}
-          </select>
+          <AccountSelect
+            accounts={accounts}
+            value={creditAccount}
+            onChange={(e) => setCreditAccount(e.target.value)}
+            required
+          />
         </label>
         <label className="field" style={{ gridColumn: '1 / -1' }}>
           <span>Description</span>

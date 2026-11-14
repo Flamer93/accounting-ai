@@ -3,8 +3,8 @@ import { formatLongDate, formatPeriodHeading, formatYearEnded } from '../moneyFo
 
 interface Props {
   title: string
-  /** Green block vs Apple muted/centered vs ledger green band vs plain journal. */
-  variant?: 'green' | 'apple' | 'ledger' | 'plain'
+  /** @deprecated All documents now share one color treatment; kept for call-site compat. */
+  variant?: 'green' | 'apple' | 'ledger' | 'plain' | 'unified'
   /** Use "For the Year Ended …" wording when a period end is set. */
   yearEnded?: boolean
   /** Show a single as-of date when period.to is set. */
@@ -13,9 +13,11 @@ interface Props {
 
 const COMPANY_PLACEHOLDER = '[Company Name]'
 
+/**
+ * Shared document header — same leaf-green band on Journal, Ledger, TB, IS, BS.
+ */
 export function StatementHeader({
   title,
-  variant = 'green',
   yearEnded = false,
   asOf = false,
 }: Props) {
@@ -30,37 +32,8 @@ export function StatementHeader({
     if (asOf && period.to) periodLabel = formatLongDate(period.to)
   }
 
-  if (variant === 'apple') {
-    return (
-      <header className="stmt-head apple">
-        <div className="stmt-company">{company}</div>
-        <div className="stmt-title">{title.toUpperCase()}</div>
-        {periodLabel ? <div className="stmt-period muted-italic">{periodLabel}</div> : null}
-      </header>
-    )
-  }
-
-  if (variant === 'ledger') {
-    return (
-      <header className="stmt-head ledger-green">
-        <div className="stmt-company">{company}</div>
-        <div className="stmt-title">{title}</div>
-      </header>
-    )
-  }
-
-  if (variant === 'plain') {
-    return (
-      <header className="stmt-head plain">
-        <div className="stmt-company">
-          {settings.companyName.trim() ? `${company}'s Journal` : 'General Journal'}
-        </div>
-      </header>
-    )
-  }
-
   return (
-    <header className="stmt-head green-block">
+    <header className="stmt-head stmt-unified">
       <div className="stmt-company">{company}</div>
       <div className="stmt-title">{title}</div>
       {periodLabel ? <div className="stmt-period">{periodLabel}</div> : null}

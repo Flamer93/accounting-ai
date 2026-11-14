@@ -1,10 +1,10 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider } from './AppContext'
+import { CompanyProvider, useCompany } from './CompanyContext'
 import { Layout } from './components/Layout'
 import { AuthProvider, useAuth } from './firebase/AuthContext'
-import { AuthPage } from './pages/AuthPage'
+import { AddTransaction } from './pages/AddTransaction'
 import { BalanceSheet } from './pages/BalanceSheet'
-import { Documents } from './pages/Documents'
 import { GuardedView } from './pages/GuardedView'
 import { Home } from './pages/Home'
 import { IncomeStatement } from './pages/IncomeStatement'
@@ -14,31 +14,24 @@ import { Settings } from './pages/Settings'
 import { TAccounts } from './pages/TAccounts'
 import { TrialBalance } from './pages/TrialBalance'
 
-function LoadingScreen() {
-  return (
-    <div className="auth-shell">
-      <div className="panel auth-card">
-        <p className="auth-brand">Accounting AI</p>
-        <p className="muted">Checking sign-in…</p>
-      </div>
-    </div>
-  )
-}
-
 function AuthenticatedApp() {
-  const { loading, user, mode, firestore } = useAuth()
-
-  if (loading) return <LoadingScreen />
-  if (!user) return <AuthPage />
+  const { user, mode, firestore } = useAuth()
+  const { companyId } = useCompany()
 
   return (
-    <AppProvider key={user.uid} userId={user.uid} authMode={mode} firestore={firestore}>
+    <AppProvider
+      key={`${user.uid}:${companyId}`}
+      userId={user.uid}
+      companyId={companyId}
+      authMode={mode}
+      firestore={firestore}
+    >
       <BrowserRouter>
         <Routes>
           <Route element={<Layout />}>
             <Route index element={<Home />} />
-            <Route path="documents" element={<Documents />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="add-transaction" element={<AddTransaction />} />
             <Route
               path="journal"
               element={
@@ -98,7 +91,9 @@ function AuthenticatedApp() {
 export default function App() {
   return (
     <AuthProvider>
-      <AuthenticatedApp />
+      <CompanyProvider>
+        <AuthenticatedApp />
+      </CompanyProvider>
     </AuthProvider>
   )
 }

@@ -7,7 +7,8 @@ export type FirebaseWebConfig = {
   appId: string
 }
 
-export type AuthMode = 'firebase' | 'mock'
+/** Local single-user mode — no sign-in. */
+export type AuthMode = 'local' | 'firebase'
 
 export type AuthUser = {
   uid: string

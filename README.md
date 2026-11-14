@@ -39,13 +39,23 @@ One Electron shell wraps the same UI + local Express extract API.
 
 ```bash
 npm run electron:dev          # Express/Vite + Electron window
-npm run electron:build:win    # NSIS installer + portable .exe
-npm run electron:build:mac    # DMG + ZIP (macOS 13 Ventura+)
+npm run electron:build:win    # portable .exe (zip for GitHub releases)
+npm run electron:build:mac    # ZIP x64 + arm64 (macOS 13 Ventura+)
 ```
 
 macOS builds default to **unsigned** (`CSC_IDENTITY_AUTO_DISCOVERY=false`) so local/CI works without Apple certs. Signing/notarization needs a Developer ID — see internal desktop notes.
 
 Packaged apps load `FIREBASE_*` / `OPENAI_API_KEY` from the process env or a `desktop.env` file under the app userData folder (see `electron/desktop.env.example`).
+
+### Updating / replacing an old install
+
+New GitHub zip releases do **not** auto-delete prior installs. Quit the app, then overwrite:
+
+- **Windows folder zip:** delete/rename the old folder, unzip the new `Accounting-AI-win-x64-folder.zip`, run `Accounting-AI.exe`.
+- **Windows portable zip:** overwrite/delete the old `.exe`, run the new one from `Accounting-AI-win-x64.zip`.
+- **macOS:** drag the new `Accounting AI.app` onto Applications and choose **Replace**. Right-click → Open on first launch.
+
+See `electron/REPLACE-INSTALL.txt` (also shipped inside release zips). Local books live under app userData and are kept unless you delete that folder.
 
 ## Notes
 

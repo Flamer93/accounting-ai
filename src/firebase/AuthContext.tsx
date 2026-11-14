@@ -1,169 +1,66 @@
-import { initializeApp, type FirebaseApp } from 'firebase/app'
-import {
-  createUserWithEmailAndPassword,
-  getAuth,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  signInWithEmailAndPassword,
-  signInWithPopup,
-  signOut,
-  type Auth,
-  type User,
-} from 'firebase/auth'
-import { getFirestore, type Firestore } from 'firebase/firestore'
 import {
   createContext,
-  useCallback,
   useContext,
-  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from 'react'
-import { isFirebaseConfigComplete, resolveFirebaseConfig } from './config'
-import { mockGetSession, mockSignIn, mockSignOut, mockSignUp } from './mockAuth'
-import type { AuthMode, AuthUser, FirebaseWebConfig } from './types'
+import type { AuthMode, AuthUser } from './types'
+
+const LEGACY_MOCK_SESSION_KEY = 'receipt-ledger:mock-session-v1'
+
+const DEFAULT_LOCAL_USER: AuthUser = {
+  uid: 'local',
+  email: 'local',
+  displayName: 'Local',
+}
 
 type AuthState = {
   loading: boolean
   mode: AuthMode
-  user: AuthUser | null
-  firebaseApp: FirebaseApp | null
-  firestore: Firestore | null
+  user: AuthUser
+  firebaseApp: null
+  firestore: null
   googleAvailable: boolean
-  signInEmail: (email: string, password: string) => Promise<void>
-  signUpEmail: (email: string, password: string) => Promise<void>
-  signInGoogle: () => Promise<void>
-  signOutUser: () => Promise<void>
 }
 
 const Ctx = createContext<AuthState | null>(null)
 
-function mapFirebaseUser(user: User): AuthUser {
-  return {
-    uid: user.uid,
-    email: user.email || '',
-    displayName: user.displayName || undefined,
+/** Prefer a prior mock-auth session uid so existing local books keep loading. */
+function resolveLocalUser(): AuthUser {
+  try {
+    const raw = localStorage.getItem(LEGACY_MOCK_SESSION_KEY)
+    if (!raw) return DEFAULT_LOCAL_USER
+    const parsed = JSON.parse(raw) as Partial<AuthUser>
+    if (parsed?.uid && typeof parsed.uid === 'string') {
+      return {
+        uid: parsed.uid,
+        email: typeof parsed.email === 'string' && parsed.email ? parsed.email : 'local',
+        displayName:
+          typeof parsed.displayName === 'string' && parsed.displayName
+            ? parsed.displayName
+            : 'Local',
+      }
+    }
+  } catch {
+    /* ignore corrupt legacy session */
   }
+  return DEFAULT_LOCAL_USER
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [loading, setLoading] = useState(true)
-  const [mode, setMode] = useState<AuthMode>('mock')
-  const [user, setUser] = useState<AuthUser | null>(null)
-  const [firebaseApp, setFirebaseApp] = useState<FirebaseApp | null>(null)
-  const [auth, setAuth] = useState<Auth | null>(null)
-  const [firestore, setFirestore] = useState<Firestore | null>(null)
-  const [googleAvailable, setGoogleAvailable] = useState(false)
+  const [user] = useState<AuthUser>(() => resolveLocalUser())
 
-  useEffect(() => {
-    let unsub: (() => void) | undefined
-    let cancelled = false
-
-    ;(async () => {
-      const config = await resolveFirebaseConfig()
-      if (cancelled) return
-
-      if (isFirebaseConfigComplete(config)) {
-        try {
-          const app = initializeApp(config as FirebaseWebConfig)
-          const nextAuth = getAuth(app)
-          const db = getFirestore(app)
-          setFirebaseApp(app)
-          setAuth(nextAuth)
-          setFirestore(db)
-          setMode('firebase')
-          setGoogleAvailable(true)
-          unsub = onAuthStateChanged(nextAuth, (fbUser) => {
-            setUser(fbUser ? mapFirebaseUser(fbUser) : null)
-            setLoading(false)
-          })
-          return
-        } catch (err) {
-          console.warn('Firebase init failed — falling back to local mock auth', err)
-        }
-      }
-
-      // Local mock auth when Firebase config is missing or init fails
-      setMode('mock')
-      setGoogleAvailable(false)
-      setFirebaseApp(null)
-      setAuth(null)
-      setFirestore(null)
-      setUser(mockGetSession())
-      setLoading(false)
-    })()
-
-    return () => {
-      cancelled = true
-      unsub?.()
-    }
-  }, [])
-
-  const signInEmail = useCallback(
-    async (email: string, password: string) => {
-      if (mode === 'firebase' && auth) {
-        await signInWithEmailAndPassword(auth, email.trim(), password)
-        return
-      }
-      setUser(mockSignIn(email, password))
-    },
-    [auth, mode],
-  )
-
-  const signUpEmail = useCallback(
-    async (email: string, password: string) => {
-      if (mode === 'firebase' && auth) {
-        await createUserWithEmailAndPassword(auth, email.trim(), password)
-        return
-      }
-      setUser(mockSignUp(email, password))
-    },
-    [auth, mode],
-  )
-
-  const signInGoogle = useCallback(async () => {
-    if (mode !== 'firebase' || !auth) {
-      throw new Error('Google sign-in requires Firebase configuration')
-    }
-    const provider = new GoogleAuthProvider()
-    await signInWithPopup(auth, provider)
-  }, [auth, mode])
-
-  const signOutUser = useCallback(async () => {
-    if (mode === 'firebase' && auth) {
-      await signOut(auth)
-      return
-    }
-    mockSignOut()
-    setUser(null)
-  }, [auth, mode])
-
-  const value = useMemo(
+  const value = useMemo<AuthState>(
     () => ({
-      loading,
-      mode,
+      loading: false,
+      mode: 'local',
       user,
-      firebaseApp,
-      firestore,
-      googleAvailable,
-      signInEmail,
-      signUpEmail,
-      signInGoogle,
-      signOutUser,
+      firebaseApp: null,
+      firestore: null,
+      googleAvailable: false,
     }),
-    [
-      loading,
-      mode,
-      user,
-      firebaseApp,
-      firestore,
-      googleAvailable,
-      signInEmail,
-      signUpEmail,
-      signInGoogle,
-      signOutUser,
-    ],
+    [user],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
