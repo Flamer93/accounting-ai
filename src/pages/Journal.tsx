@@ -12,27 +12,28 @@ import { companyHighlightKey } from '../companies'
 import { formatAmount, formatShortDate } from '../moneyFormat'
 import type { JournalEntry } from '../types'
 
-function loadHighlights(companyId: string): string[] {
+function loadHighlight(companyId: string): string {
   try {
     const raw = localStorage.getItem(companyHighlightKey(companyId))
-    if (!raw) return []
-    // New format: JSON array. Legacy: single account code string.
+    if (!raw) return ''
+    // Prefer a single code; tolerate prior JSON-array multi-select saves.
     if (raw.startsWith('[')) {
       const parsed = JSON.parse(raw) as unknown
-      if (!Array.isArray(parsed)) return []
-      return parsed.filter((c): c is string => typeof c === 'string' && Boolean(c))
+      if (!Array.isArray(parsed)) return ''
+      const first = parsed.find((c): c is string => typeof c === 'string' && Boolean(c))
+      return first || ''
     }
-    return raw.trim() ? [raw.trim()] : []
+    return raw.trim()
   } catch {
-    return []
+    return ''
   }
 }
 
-function saveHighlights(companyId: string, codes: string[]) {
+function saveHighlight(companyId: string, code: string) {
   try {
     const key = companyHighlightKey(companyId)
-    if (!codes.length) localStorage.removeItem(key)
-    else localStorage.setItem(key, JSON.stringify(codes))
+    if (!code) localStorage.removeItem(key)
+    else localStorage.setItem(key, code)
   } catch {
     /* ignore */
   }
@@ -55,10 +56,10 @@ export function Journal() {
   const [showComposer, setShowComposer] = useState(true)
   const [showClear, setShowClear] = useState(false)
   const [saveNote, setSaveNote] = useState<string | null>(null)
-  const [highlightAccounts, setHighlightAccounts] = useState(() => loadHighlights(companyId))
+  const [highlightAccount, setHighlightAccount] = useState(() => loadHighlight(companyId))
 
   useEffect(() => {
-    setHighlightAccounts(loadHighlights(companyId))
+    setHighlightAccount(loadHighlight(companyId))
   }, [companyId])
 
   function onSaveForDate() {
@@ -128,23 +129,17 @@ export function Journal() {
         <div className="cta-row">
           <PeriodControls />
           <label className="field journal-highlight-field">
-            <span>Highlight accounts</span>
+            <span>Highlight account</span>
             <AccountSelect
               accounts={accounts}
-              multiple
-              size={Math.min(8, Math.max(4, accounts.length || 4))}
-              value={highlightAccounts}
+              value={highlightAccount}
               onChange={(e) => {
-                const next = Array.from(e.target.selectedOptions, (o) => o.value).filter(Boolean)
-                setHighlightAccounts(next)
-                saveHighlights(companyId, next)
+                const next = e.target.value
+                setHighlightAccount(next)
+                saveHighlight(companyId, next)
               }}
+              placeholder="All accounts"
             />
-            <span className="journal-highlight-hint">
-              {highlightAccounts.length
-                ? `${highlightAccounts.length} selected · Cmd/Ctrl-click to toggle`
-                : 'Cmd/Ctrl-click to select one or more'}
-            </span>
           </label>
           <button className="btn secondary" type="button" onClick={() => setShowComposer((v) => !v)}>
             {showComposer ? 'Hide composer' : 'New entry'}
@@ -199,8 +194,8 @@ export function Journal() {
                 const creditLines = entry.lines.filter((l) => (l.credit || 0) > 0)
                 const rowSpan = Math.max(debitLines.length + creditLines.length, 1) + 1
                 const hit =
-                  highlightAccounts.length > 0 &&
-                  entry.lines.some((l) => highlightAccounts.includes(l.accountCode))
+                  Boolean(highlightAccount) &&
+                  entry.lines.some((l) => l.accountCode === highlightAccount)
                 return (
                   <FragmentRows
                     key={entry.id}
@@ -210,7 +205,7 @@ export function Journal() {
                     rowSpan={rowSpan}
                     pr={refs.get(entry.id) || ''}
                     highlight={hit}
-                    highlightAccounts={highlightAccounts}
+                    highlightAccount={highlightAccount}
                   />
                 )
               })}
@@ -321,7 +316,7 @@ function FragmentRows({
   creditLines,
   pr,
   highlight,
-  highlightAccounts,
+  highlightAccount,
 }: {
   entry: JournalEntry
   debitLines: JournalEntry['lines']
@@ -329,7 +324,7 @@ function FragmentRows({
   rowSpan: number
   pr: string
   highlight: boolean
-  highlightAccounts: string[]
+  highlightAccount: string
 }) {
   const rows: Array<{ kind: 'debit' | 'credit' | 'narr'; line?: JournalEntry['lines'][0] }> = [
     ...debitLines.map((line) => ({ kind: 'debit' as const, line })),
@@ -341,9 +336,7 @@ function FragmentRows({
     <>
       {rows.map((row, idx) => {
         const lineHit =
-          highlightAccounts.length > 0 &&
-          Boolean(row.line?.accountCode) &&
-          highlightAccounts.includes(row.line!.accountCode)
+          Boolean(highlightAccount) && row.line?.accountCode === highlightAccount
         const classes = [
           row.kind === 'narr' ? 'journal-narr' : '',
           highlight ? 'journal-entry-hit' : '',
