@@ -2,11 +2,11 @@ import type { ChangeEventHandler, SelectHTMLAttributes } from 'react'
 import { groupAccountsByType } from '../chartOfAccounts'
 import type { Account } from '../types'
 
-type Props = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children'> & {
+type Props = Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'value'> & {
   accounts: Account[]
-  value: string
+  value: string | string[]
   onChange: ChangeEventHandler<HTMLSelectElement>
-  /** Optional empty/placeholder option (value ""). */
+  /** Optional empty/placeholder option (value ""). Ignored when multiple. */
   placeholder?: string
   /** Show account code beside the name. */
   showCode?: boolean
@@ -21,13 +21,19 @@ export function AccountSelect({
   onChange,
   placeholder,
   showCode = false,
+  multiple,
   ...rest
 }: Props) {
   const groups = groupAccountsByType(accounts)
 
   return (
-    <select value={value} onChange={onChange} {...rest}>
-      {placeholder != null && <option value="">{placeholder}</option>}
+    <select
+      value={value}
+      onChange={onChange}
+      multiple={multiple}
+      {...rest}
+    >
+      {placeholder != null && !multiple && <option value="">{placeholder}</option>}
       {groups.map((group) => (
         <optgroup key={group.type} label={group.label}>
           {group.accounts.map((a) => (

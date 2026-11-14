@@ -19,6 +19,15 @@
   --bg-2: #e8f0eb;
   --bg-3: #f3f7f4;
   --field: rgba(255, 255, 255, 0.9);
+  /* Statement / T-account paper — stay readable in both themes */
+  --sheet-paper: #ffffff;
+  --sheet-paper-alt: #eef2ef;
+  --sheet-ink: #15201b;
+  --sheet-ink-soft: #3a4740;
+  --sheet-rule: #15201b;
+  --sheet-grid: rgba(21, 32, 27, 0.05);
+  --sheet-hit: color-mix(in srgb, var(--leaf) 18%, var(--sheet-paper));
+  --sheet-hit-strong: color-mix(in srgb, var(--leaf) 34%, var(--sheet-paper));
   font-family: 'Sora', 'IBM Plex Sans', system-ui, sans-serif;
   line-height: 1.45;
   color: var(--ink);
@@ -48,6 +57,14 @@ html[data-theme='dark'] {
   --bg-2: #121a16;
   --bg-3: #18231e;
   --field: rgba(10, 16, 13, 0.92);
+  --sheet-paper: #16201c;
+  --sheet-paper-alt: #1e2a24;
+  --sheet-ink: #e7f0ea;
+  --sheet-ink-soft: #a7b7ae;
+  --sheet-rule: #a7b7ae;
+  --sheet-grid: rgba(231, 240, 234, 0.07);
+  --sheet-hit: color-mix(in srgb, var(--leaf) 28%, var(--sheet-paper));
+  --sheet-hit-strong: color-mix(in srgb, var(--leaf) 45%, var(--sheet-paper));
 }
 
 * {
@@ -482,16 +499,32 @@ h3,
 }
 
 .journal-highlight-field {
-  min-width: 12rem;
+  min-width: 14rem;
+}
+
+.journal-highlight-field select[multiple] {
+  min-height: 6.5rem;
+  border-radius: 10px;
+  padding: 0.35rem 0.45rem;
+}
+
+.journal-highlight-hint {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.72rem;
+  color: var(--ink-soft);
 }
 
 .journal-classic tr.journal-entry-hit td {
-  background: color-mix(in srgb, var(--leaf) 10%, transparent);
+  background: var(--sheet-hit);
+  color: var(--sheet-ink);
 }
 
 .journal-classic tr.journal-line-hit td {
-  background: color-mix(in srgb, var(--leaf) 22%, transparent);
-  font-weight: 600;
+  background: var(--sheet-hit-strong);
+  color: var(--sheet-ink);
+  font-weight: 700;
+  box-shadow: inset 3px 0 0 var(--leaf);
 }
 
 .settings-lead {
@@ -874,7 +907,8 @@ code {
 
 /* —— Shared books statement chrome —— */
 .books-sheet {
-  background: var(--panel-solid);
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -925,7 +959,7 @@ code {
 
 .muted-italic {
   font-style: italic;
-  color: #666;
+  color: var(--sheet-ink-soft);
   font-size: 0.85rem;
 }
 
@@ -1047,18 +1081,20 @@ code {
   border-spacing: 0;
   font-size: 0.92rem;
   table-layout: fixed;
+  color: var(--sheet-ink);
 }
 
 .journal-classic th,
 .journal-classic td {
-  border: 1px solid rgba(30, 74, 59, 0.35);
+  border: 1px solid color-mix(in srgb, var(--sheet-rule) 35%, transparent);
   padding: 0.85rem 2.35rem;
   vertical-align: top;
+  color: inherit;
 }
 
 .journal-classic thead th {
-  background: rgba(47, 107, 85, 0.12);
-  color: var(--leaf-deep);
+  background: color-mix(in srgb, var(--leaf) 14%, var(--sheet-paper));
+  color: var(--sheet-ink);
   font-weight: 700;
   padding: 0.95rem 2.35rem;
   letter-spacing: 0.03em;
@@ -1099,7 +1135,7 @@ code {
 
 .journal-classic .journal-narr .col-desc {
   font-style: italic;
-  color: #333;
+  color: var(--sheet-ink-soft);
   padding-left: 3rem;
 }
 
@@ -1281,25 +1317,27 @@ code {
 
 /* T-accounts classic */
 .classic-t .t-account.classic {
-  background: #f7f7f7;
-  border: 2px solid #111;
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
+  border: 2px solid var(--sheet-rule);
   border-radius: 0;
   background-image:
-    linear-gradient(rgba(0, 0, 0, 0.04) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0, 0, 0, 0.04) 1px, transparent 1px);
+    linear-gradient(var(--sheet-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--sheet-grid) 1px, transparent 1px);
   background-size: 18px 18px;
 }
 
 .classic-t .t-account.classic.focused {
-  outline: 3px solid rgba(67, 141, 72, 0.45);
+  outline: 3px solid color-mix(in srgb, var(--leaf) 55%, transparent);
 }
 
 .classic-t .t-account h3 {
   margin: 0;
   text-align: center;
-  border: 2px solid #111;
+  border: 2px solid var(--sheet-rule);
   border-bottom: none;
-  background: #fff;
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
   padding: 0.45rem;
   font-family: 'IBM Plex Sans', sans-serif;
   font-size: 1rem;
@@ -1311,19 +1349,21 @@ code {
   text-align: center;
   font-weight: 700;
   font-size: 0.85rem;
-  background: #fff;
-  border-left: 2px solid #111;
-  border-right: 2px solid #111;
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
+  border-left: 2px solid var(--sheet-rule);
+  border-right: 2px solid var(--sheet-rule);
   padding: 0.25rem 0;
 }
 
 .classic-t .t-cols {
-  border-top: 2px solid #111;
-  background: #fff;
+  border-top: 2px solid var(--sheet-rule);
+  background: var(--sheet-paper);
+  color: var(--sheet-ink);
 }
 
 .classic-t .t-cols > div:first-child {
-  border-right: 2px solid #111;
+  border-right: 2px solid var(--sheet-rule);
 }
 
 .t-subhead,
@@ -1333,18 +1373,20 @@ code {
   gap: 0.25rem;
   font-size: 0.82rem;
   padding: 0.15rem 0.35rem;
+  color: var(--sheet-ink);
 }
 
 .t-subhead {
   font-weight: 600;
-  border-bottom: 1px solid #bbb;
-  color: #444;
+  border-bottom: 1px solid color-mix(in srgb, var(--sheet-rule) 45%, transparent);
+  color: var(--sheet-ink-soft);
 }
 
 .t-row.bal {
   margin-top: 0.35rem;
-  border-top: 1px solid #111;
+  border-top: 1px solid var(--sheet-rule);
   font-weight: 700;
+  color: var(--sheet-ink);
 }
 
 /* Trial balance */
@@ -1359,17 +1401,21 @@ code {
   padding: 0.35rem 1rem;
 }
 
+.tb-classic {
+  color: var(--sheet-ink);
+}
+
 .tb-classic .underline-head {
-  border-bottom: 2px solid #111;
+  border-bottom: 2px solid var(--sheet-rule);
 }
 
 .tb-classic .tb-totals td {
-  border-top: 2px solid #111;
+  border-top: 2px solid var(--sheet-rule);
   padding-top: 0.55rem;
 }
 
 .tb-classic .double-rule {
-  border-bottom: 4px double #111;
+  border-bottom: 4px double var(--sheet-rule);
 }
 
 /* Income statement */
@@ -1403,16 +1449,16 @@ code {
 }
 
 .is-classic .single-rule {
-  border-bottom: 1px solid #111;
+  border-bottom: 1px solid var(--sheet-rule);
 }
 
 .is-classic .double-rule {
-  border-bottom: 4px double #111;
+  border-bottom: 4px double var(--sheet-rule);
 }
 
 /* Balance sheet sections — same leaf tint as other documents */
 .bs-band {
-  background: rgba(47, 107, 85, 0.12);
+  background: color-mix(in srgb, var(--leaf) 14%, var(--sheet-paper));
   color: var(--leaf-deep);
   font-weight: 700;
   letter-spacing: 0.02em;
@@ -1424,14 +1470,18 @@ code {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
+  color: var(--sheet-ink);
+  background: var(--sheet-paper);
 }
 
 .bs-apple td {
   padding: 0.65rem 2rem;
+  color: inherit;
 }
 
 .bs-apple tr.alt td {
-  background: #f6f6f6;
+  background: var(--sheet-paper-alt);
+  color: var(--sheet-ink);
 }
 
 .bs-apple .indent {
@@ -1441,20 +1491,22 @@ code {
 .bs-apple .cat {
   font-weight: 600;
   padding-top: 0.65rem;
+  color: var(--sheet-ink);
 }
 
 .bs-apple .subtotal td,
 .bs-apple .grand td {
   font-weight: 700;
+  color: var(--sheet-ink);
 }
 
 .bs-apple .single-rule-above {
-  border-top: 1px solid #111;
+  border-top: 1px solid var(--sheet-rule);
 }
 
 .bs-apple .double-rule {
-  border-top: 1px solid #111;
-  border-bottom: 4px double #111;
+  border-top: 1px solid var(--sheet-rule);
+  border-bottom: 4px double var(--sheet-rule);
 }
 
 .num {
@@ -1650,7 +1702,7 @@ code {
   border-radius: 12px;
   overflow: hidden;
   max-height: 280px;
-  background: #fff;
+  background: var(--sheet-paper);
 }
 
 .worksheet-preview img {
@@ -1658,7 +1710,7 @@ code {
   width: 100%;
   max-height: 280px;
   object-fit: contain;
-  background: #f7faf8;
+  background: var(--sheet-paper-alt);
 }
 
 .worksheet-suggested {

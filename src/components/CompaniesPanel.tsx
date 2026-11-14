@@ -53,10 +53,6 @@ export function CompaniesPanel() {
       setError('Keep at least one company.')
       return
     }
-    const ok = window.confirm(
-      `Delete “${name}”?\n\nIts journal, accounts, and saved journals will be removed from this device.`,
-    )
-    if (!ok) return
     try {
       deleteCompany(id)
       setMessage(`Deleted “${name}”.`)

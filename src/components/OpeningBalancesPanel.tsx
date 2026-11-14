@@ -12,7 +12,7 @@ import type { Account, AccountType } from '../types'
 const TYPE_ORDER: AccountType[] = ['asset', 'liability', 'equity', 'revenue', 'expense']
 
 export function OpeningBalancesPanel({ compact = false }: { compact?: boolean }) {
-  const { accounts, period, postOpeningBalances, entries } = useApp()
+  const { accounts, period, postOpeningBalances } = useApp()
   const [date, setDate] = useState(period.from || new Date().toISOString().slice(0, 10))
   const [memo, setMemo] = useState('Opening balances')
   const [amounts, setAmounts] = useState<Record<string, string>>({})
@@ -58,13 +58,6 @@ export function OpeningBalancesPanel({ compact = false }: { compact?: boolean })
         amount: Number(amounts[a.code] || 0),
       }))
       .filter((r) => r.amount > 0)
-
-    if (clearFirst && entries.length) {
-      const okClear = window.confirm(
-        `Clear ${entries.length} journal entr${entries.length === 1 ? 'y' : 'ies'} before posting openings?`,
-      )
-      if (!okClear) return
-    }
 
     const result = postOpeningBalances({
       date,

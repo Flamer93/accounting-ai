@@ -35,10 +35,6 @@ export function JournalSavesPanel() {
   function onRestore(id: string, label: string) {
     setError(null)
     setMessage(null)
-    const ok = window.confirm(
-      `Restore “${label}”?\n\nThis replaces the current journal and chart of accounts with the saved copy.`,
-    )
-    if (!ok) return
     const result = restoreJournalSnapshot(id)
     if (result.errors.length) {
       setError(result.errors.join(' · '))
@@ -50,7 +46,6 @@ export function JournalSavesPanel() {
   function onDelete(id: string, label: string) {
     setError(null)
     setMessage(null)
-    if (!window.confirm(`Delete saved journal “${label}”?`)) return
     deleteJournalSnapshot(id)
     setMessage(`Deleted “${label}”.`)
   }
