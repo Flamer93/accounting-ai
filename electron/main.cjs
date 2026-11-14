@@ -1,15 +1,19 @@
 'use strict'
 
-const { app, BrowserWindow, shell, dialog } = require('electron')
+const { app, BrowserWindow, shell, dialog, session } = require('electron')
 const { spawn } = require('node:child_process')
 const fs = require('node:fs')
 const http = require('node:http')
 const net = require('node:net')
 const path = require('node:path')
 const { loadDesktopEnv } = require('./load-env.cjs')
+const { registerDesktopStorage, flushDesktopStorage } = require('./desktop-storage.cjs')
 
 const isDev = !app.isPackaged
 const projectRoot = path.resolve(__dirname, '..')
+/** Stable packaged port so Chromium origin/localStorage stays consistent when possible. */
+const PREFERRED_PORT = 47823
+let storageFlushed = false
 
 /** @type {import('node:child_process').ChildProcess | null} */
 let serverProcess = null
@@ -21,19 +25,27 @@ let serverPort = null
 /** @type {string | null} */
 let startUrl = null
 
-function findFreePort() {
+function tryListen(port) {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
-    server.listen(0, '127.0.0.1', () => {
+    server.listen(port, '127.0.0.1', () => {
       const address = server.address()
-      const port = typeof address === 'object' && address ? address.port : 0
+      const bound = typeof address === 'object' && address ? address.port : port
       server.close((err) => {
         if (err) reject(err)
-        else resolve(port)
+        else resolve(bound)
       })
     })
     server.on('error', reject)
   })
+}
+
+async function findServerPort() {
+  try {
+    return await tryListen(PREFERRED_PORT)
+  } catch {
+    return tryListen(0)
+  }
 }
 
 function waitForHealth(port, timeoutMs = 60_000) {
@@ -179,11 +191,12 @@ async function ensureServer() {
     return startUrl
   }
 
-  const port = await findFreePort()
+  const port = await findServerPort()
   startPackagedServer(port)
   await waitForHealth(port)
   serverPort = port
   startUrl = `http://127.0.0.1:${port}`
+  appendDesktopLog(`extract server ready on ${startUrl}`)
   return startUrl
 }
 
@@ -253,8 +266,36 @@ async function failStartup(err) {
   app.quit()
 }
 
+async function flushPersistentState() {
+  if (storageFlushed) return
+  storageFlushed = true
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop-storage:request-flush')
+      // Give the renderer a beat to dump localStorage → userData.
+      await new Promise((resolve) => setTimeout(resolve, 200))
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    flushDesktopStorage()
+  } catch {
+    /* ignore */
+  }
+  try {
+    await session.defaultSession.flushStorageData()
+  } catch {
+    /* ignore */
+  }
+  appendDesktopLog('flushed desktop storage + session')
+}
+
 app.whenReady().then(() => {
-  appendDesktopLog(`starting packaged=${app.isPackaged} platform=${process.platform}`)
+  registerDesktopStorage(app.getPath('userData'))
+  appendDesktopLog(
+    `starting packaged=${app.isPackaged} platform=${process.platform} userData=${app.getPath('userData')}`,
+  )
   bootstrap().catch((err) => {
     void failStartup(err)
   })
@@ -262,6 +303,7 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     // macOS: re-open a window when clicking the dock icon
     if (BrowserWindow.getAllWindows().length === 0) {
+      storageFlushed = false
       bootstrap().catch((err) => {
         void failStartup(err)
       })
@@ -276,7 +318,18 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (event) => {
+  if (!storageFlushed) {
+    event.preventDefault()
+    quitting = true
+    void flushPersistentState()
+      .catch(() => undefined)
+      .finally(() => {
+        stopServer()
+        app.quit()
+      })
+    return
+  }
   quitting = true
   stopServer()
 })

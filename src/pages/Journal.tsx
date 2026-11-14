@@ -7,10 +7,34 @@ import { PeriodControls } from '../components/PeriodControls'
 import { PostEntryForm } from '../components/PostEntryForm'
 import { StatementHeader } from '../components/StatementHeader'
 import { useApp } from '../AppContext'
+import { useAuth } from '../firebase/AuthContext'
 import { formatAmount, formatShortDate } from '../moneyFormat'
 import type { JournalEntry } from '../types'
 
+function highlightStorageKey(uid: string) {
+  return `receipt-ledger:user:${uid}:journal-highlight-account`
+}
+
+function loadHighlight(uid: string): string {
+  try {
+    return localStorage.getItem(highlightStorageKey(uid)) || ''
+  } catch {
+    return ''
+  }
+}
+
+function saveHighlight(uid: string, code: string) {
+  try {
+    const key = highlightStorageKey(uid)
+    if (!code) localStorage.removeItem(key)
+    else localStorage.setItem(key, code)
+  } catch {
+    /* ignore */
+  }
+}
+
 export function Journal() {
+  const { user } = useAuth()
   const {
     entries,
     accounts,
@@ -26,7 +50,7 @@ export function Journal() {
   const [showComposer, setShowComposer] = useState(true)
   const [showClear, setShowClear] = useState(false)
   const [saveNote, setSaveNote] = useState<string | null>(null)
-  const [highlightAccount, setHighlightAccount] = useState('')
+  const [highlightAccount, setHighlightAccount] = useState(() => loadHighlight(user.uid))
 
   function onSaveForDate() {
     const asOfDate = period.from || new Date().toISOString().slice(0, 10)
@@ -99,7 +123,11 @@ export function Journal() {
             <AccountSelect
               accounts={accounts}
               value={highlightAccount}
-              onChange={(e) => setHighlightAccount(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value
+                setHighlightAccount(next)
+                saveHighlight(user.uid, next)
+              }}
               placeholder="All accounts"
             />
           </label>

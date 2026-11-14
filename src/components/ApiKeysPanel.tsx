@@ -4,7 +4,7 @@ import { useApp } from '../AppContext'
 
 /**
  * Per-user Google Gemini / OpenAI keys for receipt + worksheet image extract.
- * Keys stay in localStorage only — never logged by the extract server.
+ * Keys stay on-device (localStorage; Electron also mirrors into userData) — never logged by the extract server.
  */
 export function ApiKeysPanel() {
   const {
